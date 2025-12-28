@@ -1,0 +1,39 @@
+%%writefile import_zip.py
+import modal
+import os
+import zipfile
+
+app = modal.App("volume-importer")
+# Creates the volume in the NEW account
+vol = modal.Volume.from_name("rag-harvest-storage-prod", create_if_missing=True)
+
+@app.function(volumes={"/data": vol}, timeout=1200)
+def upload_volume(zip_bytes):
+    print("📦 Received zip bytes. Saving to temp...")
+    with open("/tmp/incoming.zip", "wb") as f:
+        f.write(zip_bytes)
+        
+    print("📂 Extracting into Volume...")
+    # Extract the zip file into the volume directory
+    with zipfile.ZipFile("/tmp/incoming.zip", 'r') as z:
+        z.extractall("/data")
+        
+    # Validation
+    count = len(os.listdir("/data"))
+    print(f"✅ Success! Volume now contains {count} items.")
+
+@app.local_entrypoint()
+def main():
+    input_file = "transfer_data.zip"
+    if not os.path.exists(input_file):
+        print(f"❌ Error: {input_file} not found. Did you run the export script?")
+        return
+
+    print(f"⚡ Uploading {input_file} to Ashkan's account...")
+    with open(input_file, "rb") as f:
+        data = f.read()
+        
+    upload_volume.remote(data)
+    print("🎉 Transfer Complete!")
+
+!modal run --detach import_zip.py
