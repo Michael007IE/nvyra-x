@@ -29,7 +29,7 @@ def main():
         print(f"❌ Error: {input_file} not found. Did you run the export script?")
         return
 
-    print(f"⚡ Uploading {input_file} to Ashkan's account...")
+    print(f"⚡ Uploading {input_file} to new account...")
     with open(input_file, "rb") as f:
         data = f.read()
         
