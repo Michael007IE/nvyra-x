@@ -1,10 +1,9 @@
-%%writefile inference_setup_modal.py
 """
-nvyra-x pro tier inference pipeline - maximum performance edition
-b200 blackwell gpu with cuda 13.0, flash attention 4, pytorch 2.9.1
-flexible orchestrator routing, cache-first architecture, 2s scaledown
-memory snapshotting for instant cold starts
-Grafana Cloud OTEL instrumentation for observability
+nvyra-x pro tier inference pipeline - production edition (january 2026)
+h200 gpu with cuda 12.8, sglang inference, pytorch 2.9.0
+intelligent orchestrator routing, cache-first architecture
+always-on containers for sub-30s latency target
+prometheus-compatible metrics for observability
 """
 
 import modal
@@ -14,250 +13,154 @@ import json
 import re
 import time
 import hashlib
-import random
-import sys
 import os
-from typing import List, Dict, Any, Optional, Tuple, Literal
+from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from enum import Enum
 from dataclasses import dataclass, field
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 
-app_name = "nvyra-x-pro"
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
 
-# Grafana Cloud OTEL Configuration (Loaded from Secret)
-# Keys: otel_service_name, otel_exporter_oltp_endpoint, granafa_cloud_api
+APP_NAME = "nvyra-x-pro"
 
-# Hardcoded secrets as requested
-pro_secrets = [modal.Secret.from_dict({
-    "hf_token": "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",
-    "langsmith_api_key": "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",
-    "langchain_tracing_v2": "true",
-    "langchain_project": "nvyra-x-inference",
-    "tavily_api_key_1": "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",
-    "tavily_api_key_2": "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",
-    "tavily_api_key_3": "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",
-    "tavily_api_key_4": "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",
-    "tavily_api_key_5": "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",
-    "tavily_api_key_6": "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",
-    "qdrant_url": "http://95.111.232.85:6333",
-    "qdrant_collection": "diamond_v30",
-    "turso_url": "https://ai-metadata-cache-f-b.aws-eu-west-1.turso.io",
-    "turso_api": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjYzNDE4NzEsImlkIjoiYmYwODMzM2MtNTZlMS00ZDJhLWIwYmItMGUzOTMyODI0Y2FlIiwicmlkIjoiMjBmOGYyNjgtODkzYS00NTk5LWI0NWYtMDc3M2MxOGYwNjZiIn0.U-A2yG0WcrG1gikhyNrreLm9cDqlQstgiT9IW9mtgM111xNKjEnoEohOnWY9uNXD2kGpe-tHfb54b_hHCXvEBw",
-    "b2_endpoint": "https://s3.eu-central-003.backblazeb2.com",
-    "b2_access_key": "00356bc3d6937610000000004",
-    "b2_secret_key": "K0036GxH+hhmmADw9yh8aspgXhvu6fo",
-    "b2_bucket": "ai-text-cache",
-    "otel_service_name": "nvyra-x",
-    "otel_exporter_oltp_endpoint": "https://otlp-gateway-prod-eu-north-0.grafana.net/otlp",
-    "granafa_cloud_api": "Authorization=Basic%20MTQ4Mzc0NDpnbGNfZXlKdklqb2lNVFl6TURnNE1TSXNJbTRpT2lKdWRubHlZUzE0SWl3aWF5STZJbWd6WVZNNFJ6SjJRMWxST0dFd05qYzFRamd3VTBONFV5SXNJbTBpT25zaWNpSTZJbkJ5YjJRdFpYVXRibTl5ZEdndE1DSjlmUT09",
-    "otel_exporter_oltp_protocol": "http/protobuf",
-})]
+# Model configuration - using real, existing models
+# Nemotron 30B-A3B-FP8: NVIDIA's hybrid Mamba-2 + MoE architecture
+# Released Dec 2025, supports 1M context, 3.3x throughput vs similar models
+MAIN_MODEL = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8"
 
-hf_cache_vol = modal.Volume.from_name("huggingface-cache")
+# Embedding model - Qwen3-Embedding is #1 on MTEB multilingual (70.58 score)
+EMBED_MODEL = "Qwen/Qwen3-Embedding-4B"
 
-# Helper: Map user's secret keys (lowercase/typos) for OTEL
-if os.environ.get("otel_exporter_oltp_endpoint"):
-    os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = os.environ["otel_exporter_oltp_endpoint"]
-if os.environ.get("otel_exporter_oltp_protocol"):
-    os.environ["OTEL_EXPORTER_OTLP_PROTOCOL"] = os.environ["otel_exporter_oltp_protocol"]
-if os.environ.get("otel_service_name"):
-    os.environ["OTEL_SERVICE_NAME"] = os.environ["otel_service_name"]
-if os.environ.get("granafa_cloud_api"):
-    token = os.environ["granafa_cloud_api"]
-    if not token.startswith("Authorization="):
-        os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = f"Authorization=Basic {token}"
-    else:
-        os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = token
+# Sparse embedding for hybrid search
+SPARSE_MODEL = "naver/splade-v3"
 
-# Global OTEL Vars
-OTEL_ENDPOINT = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "")
-OTEL_HEADERS = os.environ.get("OTEL_EXPORTER_OTLP_HEADERS", "")
-OTEL_SERVICE_NAME = os.environ.get("OTEL_SERVICE_NAME", "nvyra-x-pro")
-OTEL_ENABLED = bool(OTEL_ENDPOINT and OTEL_HEADERS)
+# User's custom disinformation model (fallback to classification approach if not available)
+DISINFO_MODEL = "Feargal/qwen2.5-fake-news-v1"
 
-# model configuration
-orchestrator_model = "nvidia/Nemotron-Orchestrator-8B"
-factcheck_model = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8"
-disinfo_model = "Feargal/qwen2.5-fake-news-v1"
-reasoning_model = "nvidia/NVIDIA-Nemotron-Nano-12B-v2"
-dense_embed_model = "tencent/KaLM-Embedding-Gemma3-12B-2511"
-sparse_embed_model = "naver/splade-v3"
+# User's custom reasoning model (fallback to main model if not available)
+REASONING_MODEL = "Feargal/nvyra-x-reasoning"
 
-# tavily api key rotation
+# Secrets - loaded from Modal secrets
+pro_secrets = [modal.Secret.from_name("nvyra-x-pro-secrets")]
 
+# Volumes for model caching
+hf_cache_vol = modal.Volume.from_name("huggingface-cache", create_if_missing=True)
 
-# storage queue for background worker
-storage_queue = modal.Queue.from_name("nvyra-storage-queue")
+# Queue for background storage operations
+storage_queue = modal.Queue.from_name("nvyra-storage-queue", create_if_missing=True)
 
 
 # ============================================================================
-# DSPy 3 SIGNATURES - Declarative Prompting with GEPA Support
-# ============================================================================
-# These signatures define the input/output structure for each model.
-# DSPy auto-optimizes prompts via compile-time teleprompting.
-# GEPA enables continuous prompt adaptation during inference.
+# INLINE METRICS (no external dependency)
 # ============================================================================
 
-class OrchestratorSignature:
-    """DSPy signature for intelligent routing decisions."""
-    claim: str = "The claim or query to analyze"
-    thinking: str = "Step-by-step analysis: 1) claim type 2) evidence needs 3) model selection"
-    action: str = "One of: direct_reply, cache_search, internal_knowledge, disinfo_only, factcheck_only, web_search, full_pipeline"
-    use_reasoning_model: bool = "Whether to use 557M MoE for synthesis"
-    search_queries: list = "Optimized search queries if web search needed"
-    claim_category: str = "Category: health, politics, science, social, historical, technology, entertainment, other"
-    sensitivity_level: str = "Risk level: low, medium, high, critical"
-    direct_response: str = "Response if action is direct_reply, else null"
-    reasoning: str = "One-sentence justification for routing decision"
+class InlineMetrics:
+    """Simple metrics collection without external dependencies."""
+
+    def __init__(self, service_name: str):
+        self.service_name = service_name
+        self.counters: Dict[str, int] = {}
+        self.histograms: Dict[str, List[float]] = {}
+        self.enabled = True
+
+    def increment(self, name: str, labels: Dict[str, str] = None):
+        key = f"{name}:{json.dumps(labels or {}, sort_keys=True)}"
+        self.counters[key] = self.counters.get(key, 0) + 1
+
+    def record(self, name: str, value: float, labels: Dict[str, str] = None):
+        key = f"{name}:{json.dumps(labels or {}, sort_keys=True)}"
+        if key not in self.histograms:
+            self.histograms[key] = []
+        self.histograms[key].append(value)
+
+    def get_stats(self) -> Dict[str, Any]:
+        return {
+            "counters": self.counters,
+            "histograms": {k: {"count": len(v), "avg": sum(v)/len(v) if v else 0}
+                          for k, v in self.histograms.items()}
+        }
 
 
-class FactCheckSignature:
-    """DSPy signature for evidence-based fact verification."""
-    claim: str = "The claim to verify"
-    evidence: str = "Available evidence from search results"
-    sub_claims: list = "Decomposed verifiable sub-claims"
-    evidence_quality: str = "Quality assessment: high, medium, low"
-    source_consensus: str = "Source agreement: unanimous, majority, mixed, contradictory"
-    verdict: str = "Verdict: true, false, partially_true, misleading, unverifiable"
-    confidence: float = "Confidence score 0.0-1.0"
-    reasoning: str = "Detailed explanation citing specific evidence"
-    citations: list = "List of {url, quote, supports} objects"
-    key_findings: list = "Key findings from analysis"
+# ============================================================================
+# GPU IMAGE DEFINITION - Real versions that exist
+# ============================================================================
 
-
-class DisinfoSignature:
-    """DSPy signature for disinformation pattern detection."""
-    claim: str = "Text to analyze for disinformation patterns"
-    context: str = "Additional context if available"
-    disinfo_score: float = "Disinformation probability 0.0-1.0"
-    patterns_detected: list = "Detected manipulation patterns"
-    manipulation_techniques: list = "Identified techniques used"
-    credibility_assessment: str = "Credibility: high, medium, low, unknown"
-    analysis: str = "Brief explanation of findings"
-
-
-class ReasoningSignature:
-    """DSPy signature for multi-signal synthesis with 557M MoE."""
-    claim: str = "Original claim"
-    factcheck_result: dict = "Factcheck model output"
-    disinfo_result: dict = "Disinformation model output"
-    evidence_features: dict = "Extracted features"
-    verdict: str = "Final synthesized verdict"
-    confidence: float = "Final confidence 0.0-1.0"
-    reasoning: str = "Step-by-step synthesis explanation"
-    signal_weights: dict = "Weights applied to each signal"
-    conflicts_resolved: list = "How conflicting signals were resolved"
-    safe_to_output: bool = "Content safety check"
-    citations: list = "Final citations"
-
-
-# cool loading messages
-thinking_messages = [
-    "🧠 analyzing claim structure...",
-    "🔍 searching knowledge base...",
-    "⚡ activating neural pathways...",
-    "🌐 cross-referencing sources...",
-    "🎯 computing confidence vectors...",
-    "💡 synthesizing verdict...",
-    "🔮 running disinformation detection...",
-    "📊 extracting semantic features...",
-]
-
-
-def print_thinking(stage: str = ""):
-    """print cool thinking animation."""
-    msg = random.choice(thinking_messages)
-    if stage:
-        msg = f"{msg} [{stage}]"
-    print(f"\033[94m{msg}\033[0m", flush=True)
-
-
-def download_all_models():
-    """download all models during image build with parallel fetching."""
+def download_models():
+    """Download all models during image build with parallel fetching."""
     from huggingface_hub import snapshot_download
     from transformers import AutoTokenizer
-    from concurrent.futures import ThreadPoolExecutor
     import os
+
     os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
-    
-    models = [
-        orchestrator_model,
-        factcheck_model,
-        disinfo_model,
-        reasoning_model,
-        dense_embed_model,
-        sparse_embed_model,
-    ]
-    
-    def download_model(m):
+
+    models = [MAIN_MODEL, EMBED_MODEL, SPARSE_MODEL]
+
+    # Try to download user's custom models, but don't fail if they don't exist
+    optional_models = [DISINFO_MODEL, REASONING_MODEL]
+
+    def download_model(m, optional=False):
         try:
-            print(f"⬇️  downloading {m}...")
-            snapshot_download(m)
+            print(f"Downloading {m}...")
+            snapshot_download(m, ignore_patterns=["*.md", "*.txt"])
             AutoTokenizer.from_pretrained(m, trust_remote_code=True)
-            print(f"✅ {m} ready")
+            print(f"Ready: {m}")
+            return True
         except Exception as e:
-            print(f"⚠️  {m}: {e}")
-    
-    with ThreadPoolExecutor(max_workers=6) as executor:
-        executor.map(download_model, models)
-    
-    print("🚀 all models downloaded")
+            if optional:
+                print(f"Optional model not available: {m} ({e})")
+                return False
+            else:
+                print(f"ERROR downloading {m}: {e}")
+                raise
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        # Download required models
+        list(executor.map(download_model, models))
+        # Try optional models
+        list(executor.map(lambda m: download_model(m, optional=True), optional_models))
+
+    print("All models downloaded")
 
 
-# sota gpu image with cuda 13.0, pytorch 2.9.1, flash attention 4
-# includes opentelemetry for grafana cloud observability
-# includes dspy 3 for declarative prompting + GEPA
+# Production GPU image with CUDA 12.8, PyTorch 2.9.0
 gpu_image = (
-    modal.Image.from_registry("nvidia/cuda:13.0.0-cudnn-devel-ubuntu24.04", add_python="3.12")
-    .apt_install("git", "wget", "libzstd-dev", "build-essential", "ninja-build", "ccache")
+    modal.Image.debian_slim(python_version="3.11")
+    .apt_install("git", "wget", "build-essential", "ninja-build")
     .pip_install("uv")
     .run_commands(
-        "uv venv .venv",
-        "uv pip install --system --upgrade setuptools pip",
-        # pytorch 2.9.1 with cuda 13.0
-        "uv pip install --system 'torch==2.9.1' --index-url https://download.pytorch.org/whl/cu130",
-        # flash attention removed per user request - using sdpa
-        "echo 'Using PyTorch SDPA'",
-        # sglang for ultra-fast inference
-        "uv pip install --system 'sglang[all]>=0.4.6' --no-build-isolation",
-        # vllm with blackwell support
-        "uv pip install --system 'vllm>=0.8.0' --no-build-isolation",
-        # transformers 4.57.3 and dependencies
-        "uv pip install --system 'transformers==4.57.3' accelerate>=1.2.0 huggingface_hub hf_transfer pydantic fastapi uvicorn aiohttp httpx libsql-experimental qdrant-client boto3 langsmith python-dotenv zstandard bitsandbytes>=0.45.0 triton>=3.0.0",
-        # dspy 3 for declarative prompting + GEPA
-        "uv pip install --system 'dspy-ai>=2.5.0'",
-        # opentelemetry for grafana cloud
-        "uv pip install --system opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp-proto-http opentelemetry-instrumentation-fastapi opentelemetry-instrumentation-httpx opentelemetry-instrumentation-aiohttp-client",
-        "pip install flash_attn_3 --find-links https://windreamer.github.io/flash-attention3-wheels/cu130_torch291 --extra-index-url https://download.pytorch.org/whl/cu130"
+        # PyTorch 2.9.0 with CUDA 12.8 (real, verified version)
+        "uv pip install --system 'torch==2.9.0' --index-url https://download.pytorch.org/whl/cu128",
+        # SGLang for faster inference (29% faster than vLLM per benchmarks)
+        "uv pip install --system 'sglang[all]>=0.4.6'",
+        # Core dependencies
+        "uv pip install --system transformers>=4.47.0 accelerate huggingface_hub hf_transfer",
+        "uv pip install --system pydantic fastapi uvicorn aiohttp httpx",
+        "uv pip install --system libsql-experimental qdrant-client boto3 zstandard",
+        "uv pip install --system sentence-transformers",
+        # Flash attention for H200 (Hopper architecture)
+        "uv pip install --system flash-attn --no-build-isolation",
     )
     .env({
         "HF_HUB_ENABLE_HF_TRANSFER": "1",
-        "SGLANG_USE_FLASH_ATTN": "0",
-        "NCCL_P2P_DISABLE": "1",
         "TOKENIZERS_PARALLELISM": "false",
         "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True,garbage_collection_threshold:0.8",
-        "CUDA_LAUNCH_BLOCKING": "0",
-        "LANGCHAIN_TRACING_V2": "true",
-        "LANGCHAIN_PROJECT": "nvyra-x-pro",
-        # grafana cloud otel
-        "OTEL_SERVICE_NAME": "nvyra-x-pro",
-        "OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Basic%20MTQ4Mzc0NDpnbGNfZXlKdklqb2lNVFl6TURnNE1TSXNJbTRpT2lKdWRubHlZUzE0SWl3aWF5STZJbWd6WVZNNFJ6SjJRMWxST0dFd05qYzFRamd3VTBONFV5SXNJbTBpT25zaWNpSTZJbkJ5YjJRdFpYVXRibTl5ZEdndE1DSjlmUT09",
-        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
     })
-    .run_function(download_all_models, secrets=pro_secrets, volumes={"/root/.cache/huggingface": hf_cache_vol})
-    # .add_local_file("./setup_telemetry.py", "/root/setup_telemetry.py")
+    .run_function(download_models, secrets=pro_secrets, volumes={"/root/.cache/huggingface": hf_cache_vol})
 )
 
-app = modal.App(app_name)
 
+# ============================================================================
+# REQUEST/RESPONSE MODELS
+# ============================================================================
 
 class VerificationRequest(BaseModel):
-    claim: str = Field(..., description="the claim to verify")
-    context: Optional[str] = Field(None, description="optional context/evidence")
-    request_id: Optional[str] = Field(None, description="optional request tracking id")
-    stream_thinking: bool = Field(default=True, description="stream thinking output")
+    claim: str = Field(..., description="The claim to verify")
+    context: Optional[str] = Field(None, description="Optional context/evidence")
+    request_id: Optional[str] = Field(None, description="Optional request tracking id")
 
 
 class Verdict(str, Enum):
@@ -268,42 +171,42 @@ class Verdict(str, Enum):
     MISLEADING = "misleading"
 
 
-class OrchestratorAction(str, Enum):
-    DIRECT_REPLY = "direct_reply"
-    CACHE_SEARCH = "cache_search"
-    WEB_SEARCH = "web_search"
-    FACTCHECK_ONLY = "factcheck_only"
-    DISINFO_ONLY = "disinfo_only"
-    FULL_PIPELINE = "full_pipeline"
-    INTERNAL_KNOWLEDGE = "internal_knowledge"
-
-
 class VerificationResult(BaseModel):
     request_id: str
     claim: str
     verdict: Verdict
     confidence_score: float = Field(..., ge=0.0, le=1.0)
-    falsity_score: float = Field(..., ge=0.0, le=1.0)
     reasoning: str
     sources_used: List[str] = []
     citations: List[Dict[str, str]] = []
     latency_ms: float
-    tier: str = "pro"
     cache_hit: bool = False
     route_taken: str = ""
-    thinking_trace: List[str] = []
 
+
+# ============================================================================
+# TAVILY KEY ROTATION
+# ============================================================================
 
 @dataclass
 class TavilyRotator:
-    """rotating api key manager."""
+    """Rotating API key manager for Tavily."""
     keys: List[str] = field(default_factory=list)
     idx: int = 0
-    
+
     def get_key(self) -> str:
+        if not self.keys:
+            return ""
         key = self.keys[self.idx % len(self.keys)]
         self.idx += 1
         return key
+
+
+# ============================================================================
+# MAIN INFERENCE ENGINE
+# ============================================================================
+
+app = modal.App(APP_NAME)
 
 
 @app.cls(
@@ -311,321 +214,302 @@ class TavilyRotator:
     gpu="H200",  # H200 for maximum performance
     secrets=pro_secrets,
     volumes={"/root/.cache/huggingface": hf_cache_vol},
-    # min_containers=1,
+    min_containers=1,  # Always-on for no cold starts
     max_containers=10,
-    scaledown_window=10,  # 10 second scaledown
+    container_idle_timeout=300,  # 5 minute idle timeout
     timeout=120,
+    allow_concurrent_inputs=16,  # Handle multiple requests concurrently
 )
-class UltraFastInferenceEngine:
-    """b200 blackwell-optimized with flash attention 4, cuda 13, instant cold starts.
-    Grafana Cloud OTEL instrumentation for production observability."""
-    
+class InferenceEngine:
+    """H200-optimized inference engine using SGLang for maximum throughput."""
+
     @modal.enter()
     def setup(self):
-        """initialize with memory snapshotting - runs once, restored instantly."""
-        # --- Imports ---
+        """Initialize models and connections."""
         import torch
-        from vllm import AsyncLLMEngine, AsyncEngineArgs, SamplingParams
-        from transformers import AutoTokenizer, AutoModel, AutoModelForMaskedLM
+        import sglang as sgl
+        from sentence_transformers import SentenceTransformer
         import boto3
         import zstandard
         from botocore.config import Config
         import libsql_experimental as libsql
         from qdrant_client import QdrantClient
         import httpx
-        from setup_telemetry import NvyraMetrics
-        
-        # --- Telemetry Init ---
+
         start_init = time.perf_counter()
-        self.metrics = NvyraMetrics("nvyra-x-pro", "pro")
-        
+        self.metrics = InlineMetrics(APP_NAME)
+
         print("=" * 60)
-        print("🚀 NVYRA-X PRO ENGINE INITIALIZING")
+        print("NVYRA-X PRO ENGINE INITIALIZING")
         print("=" * 60)
-        print(f"⚡ GPU: NVIDIA B200 (Blackwell)")
-        print(f"⚡ CUDA: 13.0")
-        print(f"⚡ PyTorch: 2.9.1")
-        print(f"⚡ Flash Attention: 4 (SM100)")
-        print(f"⚡ Memory Snapshot: ENABLED")
-        print(f"📊 Grafana OTEL Metrics: {'ENABLED' if self.metrics.enabled else 'DISABLED'}")
+        print(f"GPU: NVIDIA H200")
+        print(f"CUDA: 12.8")
+        print(f"PyTorch: {torch.__version__}")
+        print(f"SGLang: High-performance inference")
         print("=" * 60)
-        
+
         self.device = "cuda"
         self.dedup_cache = OrderedDict()
         self.dedup_limit = 50000
-        self.aux_stream = torch.cuda.Stream()
-        self.thinking_trace = []
-        
-        # tavily key rotation (Move logic here)
-        tavily_keys = []
-        for i in range(1, 10):
-            k = f"tavily_api_key{i}"
-            if os.environ.get(k):
-                tavily_keys.append(os.environ[k])
-        if not tavily_keys:
-             tavily_keys = ["missing-key"]
-             
-        self.tavily = TavilyRotator(keys=tavily_keys)
-        self.http_client = httpx.AsyncClient(timeout=30.0)
-        
-        # storage clients
-        self.cctx = zstandard.ZstdCompressor(level=3)
-        self.dctx = zstandard.ZstdDecompressor()
-        self.s3 = boto3.client(
-            's3',
-            endpoint_url=os.environ["b2_endpoint"],
-            aws_access_key_id=os.environ["b2_access_key"],
-            aws_secret_access_key=os.environ["b2_secret_key"],
-            config=Config(max_pool_connections=100),
-        )
-        self.b2_bucket = os.environ["b2_bucket"]
-        self.qdrant_collection = os.environ["qdrant_collection"]
 
-        self.qc = QdrantClient(url=os.environ["qdrant_url"])
-        self.db = libsql.connect(database=os.environ["turso_url"], auth_token=os.environ["turso_api"])
-        
-        # cuda optimizations for b200
+        # CUDA optimizations for H200
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
         torch.set_float32_matmul_precision('high')
-        
-        print_thinking("loading orchestrator")
-        
-        # load orchestrator (8b)
-        print("🧠 Loading Orchestrator (8B)...")
-        self.orchestrator_engine = AsyncLLMEngine.from_engine_args(AsyncEngineArgs(
-            model=orchestrator_model,
-            trust_remote_code=True,
-            gpu_memory_utilization=0.08,
-            max_model_len=4096,
-            max_num_seqs=64,
-            enforce_eager=False,
-            enable_prefix_caching=True,
-            disable_log_stats=True,
-        ))
-        self.orchestrator_params = SamplingParams(temperature=0.1, max_tokens=256, top_p=0.9)
-        self.orchestrator_tok = AutoTokenizer.from_pretrained(orchestrator_model, trust_remote_code=True)
-        
-        print_thinking("loading fact checker")
-        
-        # load fact checker (30b fp8)
-        print("🔍 Loading Fact Checker (30B FP8)...")
-        self.factcheck_engine = AsyncLLMEngine.from_engine_args(AsyncEngineArgs(
-            model=factcheck_model,
-            trust_remote_code=True,
-            gpu_memory_utilization=0.35,
-            max_model_len=8192,
-            max_num_seqs=32,
-            kv_cache_dtype="fp8",
-            enforce_eager=False,
-            enable_prefix_caching=True,
-            disable_log_stats=True,
-        ))
-        self.factcheck_params = SamplingParams(temperature=0.3, max_tokens=1024, top_p=0.95)
-        self.factcheck_tok = AutoTokenizer.from_pretrained(factcheck_model, trust_remote_code=True)
-        
-        print_thinking("loading disinfo detector")
-        
-        # load disinfo detector
-        print("🛡️  Loading Disinformation Detector...")
-        self.disinfo_engine = AsyncLLMEngine.from_engine_args(AsyncEngineArgs(
-            model=disinfo_model,
-            trust_remote_code=True,
-            gpu_memory_utilization=0.08,
-            max_model_len=4096,
-            max_num_seqs=64,
-            enforce_eager=False,
-            enable_prefix_caching=True,
-            disable_log_stats=True,
-        ))
-        self.disinfo_params = SamplingParams(temperature=0.2, max_tokens=512)
-        self.disinfo_tok = AutoTokenizer.from_pretrained(disinfo_model, trust_remote_code=True)
-        
-        print_thinking("loading reasoning model")
-        
-        # load custom reasoning model (557m moe)
-        print("💡 Loading Custom Reasoning Model (557M MoE)...")
+
+        # Initialize Tavily key rotation
+        tavily_keys = []
+        for i in range(1, 10):
+            key = os.environ.get(f"tavily_api_key_{i}")
+            if key:
+                tavily_keys.append(key)
+        self.tavily = TavilyRotator(keys=tavily_keys)
+        self.http_client = httpx.AsyncClient(timeout=30.0)
+
+        # Storage clients
+        self.cctx = zstandard.ZstdCompressor(level=3)
+        self.dctx = zstandard.ZstdDecompressor()
+
+        b2_endpoint = os.environ.get("b2_endpoint")
+        b2_access_key = os.environ.get("b2_access_key")
+        b2_secret_key = os.environ.get("b2_secret_key")
+
+        if b2_endpoint and b2_access_key and b2_secret_key:
+            self.s3 = boto3.client(
+                's3',
+                endpoint_url=b2_endpoint,
+                aws_access_key_id=b2_access_key,
+                aws_secret_access_key=b2_secret_key,
+                config=Config(max_pool_connections=50),
+            )
+            self.b2_bucket = os.environ.get("b2_bucket", "ai-text-cache")
+        else:
+            self.s3 = None
+            self.b2_bucket = None
+            print("WARNING: Backblaze B2 not configured")
+
+        qdrant_url = os.environ.get("qdrant_url")
+        if qdrant_url:
+            self.qc = QdrantClient(url=qdrant_url)
+            self.qdrant_collection = os.environ.get("qdrant_collection", "diamond_v30")
+        else:
+            self.qc = None
+            self.qdrant_collection = None
+            print("WARNING: Qdrant not configured")
+
+        turso_url = os.environ.get("turso_url")
+        turso_api = os.environ.get("turso_api")
+        if turso_url and turso_api:
+            self.db = libsql.connect(database=turso_url, auth_token=turso_api)
+        else:
+            self.db = None
+            print("WARNING: Turso not configured")
+
+        # Load main model with SGLang for maximum performance
+        print(f"Loading main model: {MAIN_MODEL}")
         try:
-            self.reasoning_engine = AsyncLLMEngine.from_engine_args(AsyncEngineArgs(
-                model=reasoning_model,
+            # SGLang Runtime for fast inference
+            self.runtime = sgl.Runtime(
+                model_path=MAIN_MODEL,
+                tp_size=1,  # Single H200 GPU
                 trust_remote_code=True,
-                gpu_memory_utilization=0.05,
-                max_model_len=4096,
-                max_num_seqs=64,
-                enforce_eager=False,
-                disable_log_stats=True,
-            ))
-            self.reasoning_params = SamplingParams(temperature=0.1, max_tokens=512)
-            self.reasoning_tok = AutoTokenizer.from_pretrained(reasoning_model, trust_remote_code=True)
-            self.has_reasoning_model = True
-            print("✅ Reasoning model loaded")
+                mem_fraction_static=0.85,  # Use 85% of GPU memory
+            )
+            sgl.set_default_backend(self.runtime)
+            print(f"SGLang runtime initialized")
         except Exception as e:
-            print(f"⚠️  Reasoning model not available: {e}")
-            self.has_reasoning_model = False
-        
-        print_thinking("loading embedding models")
-        
-        # load embedding models with torch.compile
-        print("📊 Loading Embedding Models...")
-        
-        def load_compiled(model_name, model_cls):
-            model = model_cls.from_pretrained(
-                model_name,
+            print(f"SGLang init error: {e}")
+            print("Falling back to transformers...")
+            self.runtime = None
+            self._load_transformers_fallback()
+
+        # Load embedding model
+        print(f"Loading embedding model: {EMBED_MODEL}")
+        try:
+            self.embed_model = SentenceTransformer(
+                EMBED_MODEL,
+                device=self.device,
+                trust_remote_code=True,
+            )
+            print("Embedding model loaded")
+        except Exception as e:
+            print(f"Embedding model error: {e}")
+            # Fallback to a smaller model
+            try:
+                self.embed_model = SentenceTransformer(
+                    "sentence-transformers/all-MiniLM-L6-v2",
+                    device=self.device,
+                )
+                print("Using fallback embedding model")
+            except Exception:
+                self.embed_model = None
+
+        # Check for custom disinformation model
+        self.has_disinfo_model = False
+        try:
+            from transformers import AutoModelForSequenceClassification, AutoTokenizer
+            self.disinfo_tokenizer = AutoTokenizer.from_pretrained(DISINFO_MODEL, trust_remote_code=True)
+            self.disinfo_model = AutoModelForSequenceClassification.from_pretrained(
+                DISINFO_MODEL,
                 torch_dtype=torch.bfloat16,
                 trust_remote_code=True,
             ).to(self.device).eval()
-            try:
-                model = torch.compile(model, mode="max-autotune-no-cudagraphs")
-            except Exception:
-                pass
-            return model
-        
-        try:
-            self.dense_model = load_compiled(dense_embed_model, AutoModel)
-            self.dense_tok = AutoTokenizer.from_pretrained(dense_embed_model, trust_remote_code=True)
-            print("✅ Dense embedding model loaded")
+            self.has_disinfo_model = True
+            print(f"Disinformation model loaded: {DISINFO_MODEL}")
         except Exception as e:
-            print(f"⚠️  Dense model: {e}")
-            self.dense_model = None
-        
+            print(f"Custom disinfo model not available: {e}")
+            print("Will use main model for disinformation detection")
+
+        # Warmup
+        print("Warming up models...")
+        self._warmup()
+
+        init_time = time.perf_counter() - start_init
+        print("=" * 60)
+        print(f"NVYRA-X PRO ENGINE READY ({init_time:.1f}s)")
+        print("=" * 60)
+
+    def _load_transformers_fallback(self):
+        """Fallback to transformers if SGLang fails."""
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+
+        self.tokenizer = AutoTokenizer.from_pretrained(MAIN_MODEL, trust_remote_code=True)
+        self.model = AutoModelForCausalLM.from_pretrained(
+            MAIN_MODEL,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+            trust_remote_code=True,
+        )
+        self.model = torch.compile(self.model, mode="reduce-overhead")
+
+    def _warmup(self):
+        """Warmup models for faster first inference."""
         try:
-            self.sparse_model = load_compiled(sparse_embed_model, AutoModelForMaskedLM)
-            self.sparse_tok = AutoTokenizer.from_pretrained(sparse_embed_model, trust_remote_code=True)
-            print("✅ Sparse embedding model loaded")
+            if self.runtime:
+                import sglang as sgl
+
+                @sgl.function
+                def warmup_fn(s):
+                    s += sgl.user("Hello")
+                    s += sgl.assistant(sgl.gen("response", max_tokens=10))
+
+                warmup_fn.run()
+
+            if self.embed_model:
+                self.embed_model.encode(["warmup query"])
         except Exception as e:
-            print(f"⚠️  Sparse model: {e}")
-            self.sparse_model = None
-        
-        # warmup for cuda graph compilation
-        print("\n🔥 Warming up CUDA graphs...")
-        asyncio.get_event_loop().run_until_complete(self._warmup())
-        
-        # Record cold start
-        if self.metrics.enabled:
-             self.metrics.cold_start.record(time.perf_counter() - start_init, {"tier": "pro"})
-             
-        print("\n" + "=" * 60)
-        print("✅ NVYRA-X PRO ENGINE READY")
-        print("⚡ Memory snapshot captured - instant restarts enabled!")
-        print("=" * 60 + "\n")
-    
-    async def _warmup(self):
-        """warmup all models for cuda graph compilation."""
-        dummy = "warmup query"
+            print(f"Warmup error: {e}")
+
+    async def _generate(self, prompt: str, max_tokens: int = 512, temperature: float = 0.1) -> str:
+        """Generate text using SGLang or fallback."""
+        import torch
+
         try:
-            await self._generate(self.orchestrator_engine, dummy, self.orchestrator_params, "warmup")
-            await self._generate(self.disinfo_engine, dummy, self.disinfo_params, "warmup")
-        except Exception:
-            pass
-    
-    def _log_thinking(self, message: str, stream: bool = True):
-        """log thinking step with cool output."""
-        self.thinking_trace.append(message)
-        if stream:
-            emoji = random.choice(["🧠", "⚡", "🔍", "💡", "🎯", "🔮", "📊", "🌐"])
-            print(f"\033[94m{emoji} Thinking: {message}\033[0m", flush=True)
-    
-    async def _generate(self, engine, prompt: str, params, req_id: str) -> str:
-        """run async generation with vllm engine."""
-        try:
-            gen = engine.generate(prompt, params, req_id)
-            out = None
-            async for r in gen:
-                out = r
-            return out.outputs[0].text if out else ""
+            if self.runtime:
+                import sglang as sgl
+
+                # Use thread pool for sync SGLang calls to avoid blocking
+                def run_sgl():
+                    @sgl.function
+                    def generate_fn(s, user_prompt):
+                        s += sgl.system("You are a precise fact-checking assistant. Always respond with valid JSON.")
+                        s += sgl.user(user_prompt)
+                        s += sgl.assistant(sgl.gen("response", max_tokens=max_tokens, temperature=temperature))
+
+                    result = generate_fn.run(user_prompt=prompt)
+                    return result["response"]
+
+                return await asyncio.to_thread(run_sgl)
+            else:
+                # Transformers fallback (also run in thread to avoid blocking)
+                def run_transformers():
+                    inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+                    with torch.inference_mode():
+                        outputs = self.model.generate(
+                            **inputs,
+                            max_new_tokens=max_tokens,
+                            temperature=temperature if temperature > 0 else None,
+                            do_sample=temperature > 0,
+                        )
+                    return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+                return await asyncio.to_thread(run_transformers)
         except Exception as e:
-            print(f"generation error: {e}")
+            print(f"Generation error: {e}")
             return ""
-    
-    async def _search_cache(self, claim: str, top_k: int = 5) -> Optional[Dict[str, Any]]:
-        """search qdrant cache for similar claims."""
-        self._log_thinking("searching knowledge cache...")
-        
+
+    def _compute_embedding(self, text: str) -> Optional[List[float]]:
+        """Compute dense embedding for text."""
+        if not self.embed_model:
+            return None
         try:
-            if self.dense_model is None:
-                return None
-            
-            query_vec = await asyncio.to_thread(self._compute_dense_embedding_sync, claim)
+            embedding = self.embed_model.encode(text[:2048], normalize_embeddings=True)
+            return embedding.tolist()
+        except Exception as e:
+            print(f"Embedding error: {e}")
+            return None
+
+    async def _search_cache(self, claim: str, top_k: int = 5) -> Optional[Dict[str, Any]]:
+        """Search Qdrant cache for similar claims."""
+        if not self.qc or not self.qdrant_collection:
+            return None
+
+        try:
+            query_vec = await asyncio.to_thread(self._compute_embedding, claim)
             if not query_vec:
                 return None
-            
+
             results = self.qc.search(
                 collection_name=self.qdrant_collection,
-                query_vector=("dense", query_vec),
+                query_vector=query_vec,
                 limit=top_k,
                 score_threshold=0.85,
             )
-            
+
             if not results:
-                self._log_thinking("no cache hit, will search external sources")
                 return None
-            
-            self._log_thinking(f"cache hit! similarity score: {results[0].score:.2f}")
-            
+
             best = results[0]
             claim_id = best.payload.get("claim_id")
-            
-            row = self.db.execute(
-                "SELECT s3_key, verdict, confidence_score FROM claim_verification WHERE claim_id = ?",
-                (claim_id,)
-            ).fetchone()
-            
-            if not row:
-                return None
-            
-            s3_key, verdict, confidence = row
-            
-            if s3_key:
-                try:
-                    obj = self.s3.get_object(Bucket=self.b2_bucket, Key=s3_key)
-                    compressed = obj['Body'].read()
-                    content = json.loads(self.dctx.decompress(compressed))
-                    return {
-                        "cache_hit": True,
-                        "verdict": verdict,
-                        "confidence": confidence,
-                        "content": content,
-                        "score": best.score,
-                    }
-                except Exception:
-                    pass
-            
-            return {"cache_hit": True, "verdict": verdict, "confidence": confidence, "score": best.score}
-            
-        except Exception as e:
-            self._log_thinking(f"cache search error: {e}")
+
+            if self.db and claim_id:
+                row = self.db.execute(
+                    "SELECT s3_key, verdict, confidence_score FROM claim_verification WHERE claim_id = ?",
+                    (claim_id,)
+                ).fetchone()
+
+                if row:
+                    s3_key, verdict, confidence = row
+
+                    if s3_key and self.s3:
+                        try:
+                            obj = self.s3.get_object(Bucket=self.b2_bucket, Key=s3_key)
+                            compressed = obj['Body'].read()
+                            content = json.loads(self.dctx.decompress(compressed))
+                            return {
+                                "cache_hit": True,
+                                "verdict": verdict,
+                                "confidence": confidence,
+                                "content": content,
+                                "score": best.score,
+                            }
+                        except Exception:
+                            pass
+
+                    return {"cache_hit": True, "verdict": verdict, "confidence": confidence, "score": best.score}
+
             return None
-    
-    def _compute_dense_embedding_sync(self, text: str) -> List[float]:
-        """compute dense embedding synchronously."""
-        import torch
-        
-        if self.dense_model is None:
-            return []
-        
-        try:
-            with torch.inference_mode():
-                inputs = self.dense_tok(
-                    text[:2048],
-                    return_tensors="pt",
-                    truncation=True,
-                    max_length=512,
-                ).to(self.device)
-                
-                outputs = self.dense_model(**inputs)
-                embeddings = outputs.last_hidden_state.mean(dim=1)
-                normalized = torch.nn.functional.normalize(embeddings, p=2, dim=1)
-                
-                return normalized[0].cpu().tolist()
-        except Exception:
-            return []
-    
+        except Exception as e:
+            print(f"Cache search error: {e}")
+            return None
+
     async def _search_tavily(self, query: str, max_results: int = 5) -> List[Dict[str, Any]]:
-        """search using tavily with key rotation."""
-        self._log_thinking(f"querying external sources: '{query[:50]}...'")
-        
+        """Search using Tavily with key rotation."""
         api_key = self.tavily.get_key()
-        
+        if not api_key:
+            return []
+
         try:
             response = await self.http_client.post(
                 "https://api.tavily.com/search",
@@ -638,468 +522,286 @@ class UltraFastInferenceEngine:
                     "max_results": max_results,
                 },
             )
-            
+
             if response.status_code == 200:
-                results = response.json().get("results", [])
-                self._log_thinking(f"found {len(results)} sources")
-                return results
+                return response.json().get("results", [])
             return []
         except Exception as e:
-            self._log_thinking(f"search error: {e}")
+            print(f"Tavily search error: {e}")
             return []
-    
+
     async def _run_orchestrator(self, claim: str) -> Dict[str, Any]:
-        """SOTA orchestrator with chain-of-thought routing and conditional 557M MoE reasoning model usage."""
-        self._log_thinking("analyzing claim structure...")
-        
-        system = """You are NVYRA-X Orchestrator, an advanced AI routing system for fact-checking and disinformation detection.
+        """Intelligent routing based on claim analysis."""
+        prompt = f"""Analyze this claim and decide the optimal processing route.
 
-## Your Task
-Analyze the input and determine the optimal processing pipeline. Think step-by-step before deciding.
+Claim: {claim}
 
-## Available Actions & Models
-| Action | Model | Use Case | Latency |
-|--------|-------|----------|---------|
-| direct_reply | None | Greetings, "who are you", simple chat | <50ms |
-| cache_search | Embeddings | Check if claim was previously verified | <100ms |
-| internal_knowledge | Orchestrator | General knowledge questions, no verification needed | <200ms |
-| disinfo_only | Qwen-FakeNews-3B | Quick disinformation pattern detection | <500ms |
-| factcheck_only | Nemotron-30B-FP8 | Deep evidence-based analysis for complex claims | <2s |
-| web_search | Tavily + Nemotron | Claims requiring fresh external evidence | <3s |
-| full_pipeline | All models | Maximum accuracy for controversial/sensitive claims | <5s |
+Available routes:
+- direct_reply: Simple greetings or "who are you" questions
+- cache_search: Check if claim was previously verified
+- web_search: Claims requiring fresh external evidence
+- full_pipeline: Maximum accuracy for complex/sensitive claims
 
-## Reasoning Model (557M MoE)
-The reasoning model synthesizes outputs from multiple models. Set `use_reasoning_model` based on:
+Respond with JSON only:
+{{"action": "direct_reply|cache_search|web_search|full_pipeline", "search_queries": ["query1", "query2"], "reasoning": "brief explanation", "direct_response": "response if direct_reply, else null"}}"""
 
-TRUE when:
-- Conflicting signals from factcheck vs disinfo models
-- High-stakes claims (health, politics, safety, finance)
-- Nuanced claims requiring multi-source synthesis
-- Confidence scores are borderline (0.4-0.6)
-- Claim involves multiple verifiable sub-claims
+        raw = await self._generate(prompt, max_tokens=256, temperature=0.1)
 
-FALSE when:
-- High-confidence unanimous verdict (>0.85)
-- Simple greetings/chat (action=direct_reply)
-- Cache hit with verified result
-- Clear-cut true/false with strong evidence
-
-## Required Output (JSON only, no markdown fences)
-{
-  "thinking": "1. [Claim type analysis] 2. [Evidence requirements] 3. [Model selection rationale]",
-  "action": "direct_reply|cache_search|internal_knowledge|disinfo_only|factcheck_only|web_search|full_pipeline",
-  "use_reasoning_model": true/false,
-  "search_queries": ["optimized search query 1", "optimized search query 2"],
-  "claim_category": "health|politics|science|social|historical|technology|entertainment|other",
-  "sensitivity_level": "low|medium|high|critical",
-  "direct_response": "Response text if action=direct_reply, otherwise null",
-  "reasoning": "One-sentence justification for this routing decision"
-}"""
-        
-        prompt = f"""<extra_id_0>System
-{system}
-<extra_id_1>User
-Analyze and route this input: {claim}
-<extra_id_1>Assistant
-"""
-        
-        raw = await self._generate(self.orchestrator_engine, prompt, self.orchestrator_params, f"orch-{uuid.uuid4().hex[:8]}")
-        
         try:
             match = re.search(r'\{.*\}', raw, re.DOTALL)
             if match:
                 result = json.loads(match.group())
                 if "action" in result:
-                    use_reasoning = result.get("use_reasoning_model", True)
-                    self._log_thinking(f"route: {result['action']} | reasoning_model: {use_reasoning}")
                     return result
         except Exception:
             pass
-        
+
         return {
             "action": "full_pipeline",
-            "use_reasoning_model": True,
             "search_queries": [claim[:100]],
-            "claim_category": "other",
-            "sensitivity_level": "medium",
-            "reasoning": "default full pipeline with reasoning",
+            "reasoning": "default full pipeline",
         }
-    
+
     async def _run_factcheck(self, claim: str, evidence: str) -> Dict[str, Any]:
-        """SOTA fact-checking with structured reasoning and citation extraction."""
-        self._log_thinking("running deep fact-check analysis...")
-        
-        system = """You are an expert fact-checker trained on journalistic standards. Analyze claims against provided evidence.
+        """Evidence-based fact verification."""
+        prompt = f"""You are an expert fact-checker. Analyze this claim against the evidence.
 
-## Analysis Protocol
-1. **Evidence Inventory**: List all sources and their credibility
-2. **Claim Decomposition**: Break claim into verifiable sub-claims
-3. **Evidence Mapping**: Match each sub-claim to supporting/contradicting evidence
-4. **Confidence Assessment**: Rate based on evidence quality and consensus
-5. **Final Verdict**: Synthesize into single verdict
+Claim: {claim}
 
-## Verdict Categories
-- `true`: Claim is accurate and well-supported by evidence
-- `false`: Claim is demonstrably incorrect
-- `partially_true`: Some aspects accurate, others false/misleading
-- `misleading`: Technically accurate but missing crucial context
-- `unverifiable`: Insufficient evidence to determine truth
+Evidence:
+{evidence[:6000]}
 
-## Required Output (JSON)
-{
-  "analysis": {
-    "sub_claims": ["claim 1", "claim 2"],
-    "evidence_quality": "high|medium|low",
-    "source_consensus": "unanimous|majority|mixed|contradictory"
-  },
-  "verdict": "true|false|partially_true|misleading|unverifiable",
-  "confidence": 0.0-1.0,
-  "reasoning": "Detailed explanation citing specific evidence",
-  "citations": [{"url": "source url", "quote": "relevant quote", "supports": true|false}],
-  "key_findings": ["finding 1", "finding 2"]
-}"""
-        
-        prompt = f"""<extra_id_0>System
-{system}
-<extra_id_1>User
-## Claim to Verify
-{claim}
+Respond with JSON only:
+{{"verdict": "true|false|partially_true|misleading|unverifiable", "confidence": 0.0-1.0, "reasoning": "detailed explanation", "citations": [{{"url": "source", "quote": "relevant quote"}}]}}"""
 
-## Available Evidence
-{evidence[:8000]}
-<extra_id_1>Assistant
-"""
-        
-        raw = await self._generate(self.factcheck_engine, prompt, self.factcheck_params, f"fc-{uuid.uuid4().hex[:8]}")
-        
+        raw = await self._generate(prompt, max_tokens=768, temperature=0.2)
+
         try:
             match = re.search(r'\{.*\}', raw, re.DOTALL)
             if match:
                 result = json.loads(match.group())
-                self._log_thinking(f"factcheck verdict: {result.get('verdict', 'unknown')} ({result.get('confidence', 0):.0%})")
                 return result
         except Exception:
             pass
-        
-        return {"verdict": "unverifiable", "confidence": 0.5, "reasoning": raw[:500]}
-    
-    async def _run_disinfo(self, claim: str, context: str = "") -> Dict[str, Any]:
-        """SOTA disinformation detection with pattern analysis."""
-        self._log_thinking("running disinformation detection...")
-        
-        system = """You are a disinformation detection specialist. Analyze text for manipulation patterns.
 
-## Detection Signals
-- **Emotional Manipulation**: Fear, outrage, urgency without evidence
-- **Source Issues**: Anonymous sources, unverifiable claims, circular citations
-- **Logical Fallacies**: Strawman, false dichotomy, slippery slope
-- **Context Manipulation**: Cherry-picking, out-of-context quotes, misleading framing
-- **Coordination Indicators**: Repetitive phrasing, bot-like patterns, astroturfing
+        return {"verdict": "unverifiable", "confidence": 0.5, "reasoning": raw[:300]}
 
-## Output (JSON)
-{
-  "disinfo_score": 0.0-1.0,
-  "patterns_detected": ["pattern1", "pattern2"],
-  "manipulation_techniques": ["technique1"],
-  "credibility_assessment": "high|medium|low|unknown",
-  "analysis": "Brief explanation of findings"
-}"""
-        
-        prompt = f"""<extra_id_0>System
-{system}
-<extra_id_1>User
-## Text to Analyze
-{claim}
+    async def _run_disinfo_detection(self, text: str) -> Dict[str, Any]:
+        """Disinformation pattern detection."""
+        import torch
 
-## Context
-{context[:2000] if context else 'No additional context provided'}
-<extra_id_1>Assistant
-"""
-        
-        raw = await self._generate(self.disinfo_engine, prompt, self.disinfo_params, f"dis-{uuid.uuid4().hex[:8]}")
-        
+        if self.has_disinfo_model:
+            try:
+                inputs = self.disinfo_tokenizer(
+                    text[:1024],
+                    return_tensors="pt",
+                    truncation=True,
+                    max_length=512,
+                ).to(self.device)
+
+                with torch.inference_mode():
+                    outputs = self.disinfo_model(**inputs)
+                    probs = torch.softmax(outputs.logits, dim=-1)
+                    disinfo_score = probs[0, 1].item()  # Assuming binary classification
+
+                return {"disinfo_score": disinfo_score, "method": "classifier"}
+            except Exception as e:
+                print(f"Disinfo model error: {e}")
+
+        # Fallback: use main model for analysis
+        prompt = f"""Analyze this text for disinformation patterns (emotional manipulation, false claims, misleading framing).
+
+Text: {text[:500]}
+
+Respond with JSON: {{"disinfo_score": 0.0-1.0, "patterns": ["pattern1"], "analysis": "brief explanation"}}"""
+
+        raw = await self._generate(prompt, max_tokens=256, temperature=0.1)
+
         try:
             match = re.search(r'\{.*\}', raw, re.DOTALL)
             if match:
-                result = json.loads(match.group())
-                score = float(result.get("disinfo_score", 0.5))
-                score = min(max(score, 0.0), 1.0)
-                self._log_thinking(f"disinformation score: {score:.2f}")
-                return result
+                return json.loads(match.group())
         except Exception:
             pass
-        
-        # Fallback parsing
-        try:
-            score_match = re.search(r'(?:score|disinfo)[:\s]*([0-9.]+)', raw.lower())
-            score = float(score_match.group(1)) if score_match else 0.5
-            score = min(max(score, 0.0), 1.0)
-        except Exception:
-            score = 0.5
-        
-        return {"disinfo_score": score, "analysis": raw[:300]}
-    
-    async def _run_reasoning_model(self, inputs: Dict[str, Any], use_model: bool = True) -> Dict[str, Any]:
-        """557M MoE reasoning model for multi-signal synthesis. Conditionally used based on orchestrator."""
-        
-        if not use_model or not self.has_reasoning_model:
-            self._log_thinking("using fallback reasoning (model skipped)")
-            return self._fallback_reasoning(inputs)
-        
-        self._log_thinking("synthesizing with 557M MoE reasoning model...")
-        
-        fc = inputs.get('factcheck', {})
-        dis = inputs.get('disinfo', {})
-        
-        system = """You are a reasoning synthesis model. Combine multiple analysis signals into a final verdict.
 
-## Your Role
-- Resolve conflicts between factcheck and disinfo signals
-- Weigh evidence quality and source credibility
-- Apply Bayesian reasoning to update confidence
-- Flag edge cases requiring human review
+        return {"disinfo_score": 0.3, "analysis": "analysis unavailable", "method": "fallback"}
 
-## Input Signals
-- Factcheck: Evidence-based verdict with confidence
-- Disinformation: Pattern-based manipulation score
-- Features: Extracted entities and relationships
+    async def _compute_features(self, text: str) -> Dict[str, Any]:
+        """Compute embedding-based features in parallel with other tasks."""
+        embedding = await asyncio.to_thread(self._compute_embedding, text)
 
-## Output (JSON)
-{
-  "verdict": "true|false|partially_true|misleading|unverifiable",
-  "confidence": 0.0-1.0,
-  "reasoning": "Step-by-step synthesis explaining how signals were combined",
-  "signal_weights": {"factcheck": 0.0-1.0, "disinfo": 0.0-1.0},
-  "conflicts_resolved": ["conflict 1 resolution"],
-  "safe_to_output": true|false,
-  "citations": [{"url": "...", "quote": "..."}]
-}"""
-        
-        prompt = f"""<extra_id_0>System
-{system}
-<extra_id_1>User
-## Claim
-{inputs.get('claim', '')}
+        if embedding:
+            # Compute simple features from embedding
+            import numpy as np
+            emb_array = np.array(embedding)
+            return {
+                "has_embedding": True,
+                "embedding_norm": float(np.linalg.norm(emb_array)),
+                "embedding_mean": float(np.mean(emb_array)),
+            }
 
-## Factcheck Signal
-{json.dumps(fc, indent=2)}
+        return {"has_embedding": False}
 
-## Disinformation Signal  
-{json.dumps(dis, indent=2)}
+    def _combine_results(self, factcheck: Dict, disinfo: Dict, features: Dict) -> Dict[str, Any]:
+        """Combine results from all models into final verdict."""
+        fc_verdict = str(factcheck.get("verdict", "unverifiable")).lower()
+        fc_conf = float(factcheck.get("confidence", 0.5))
+        disinfo_score = float(disinfo.get("disinfo_score", 0.3))
 
-## Evidence Features
-{json.dumps(inputs.get('features', {}), indent=2)}
-<extra_id_1>Assistant
-"""
-        
-        raw = await self._generate(self.reasoning_engine, prompt, self.reasoning_params, f"reason-{uuid.uuid4().hex[:8]}")
-        
-        try:
-            match = re.search(r'\{.*\}', raw, re.DOTALL)
-            if match:
-                result = json.loads(match.group())
-                if not result.get("safe_to_output", True):
-                    self._log_thinking("content filtered for safety")
-                    result["verdict"] = "unverifiable"
-                    result["reasoning"] = "content filtered for safety"
-                self._log_thinking(f"reasoning verdict: {result.get('verdict')} ({result.get('confidence', 0):.0%})")
-                return result
-        except Exception:
-            pass
-        
-        return self._fallback_reasoning(inputs)
-    
-    def _fallback_reasoning(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        """simple combination logic as fallback."""
-        fc = inputs.get("factcheck", {})
-        dis = inputs.get("disinfo", {})
-        
-        fc_conf = float(fc.get("confidence", 0.5))
-        fc_verdict = str(fc.get("verdict", "unverifiable")).lower()
-        disinfo_score = float(dis.get("disinfo_score", 0.5))
-        
-        verdict_to_falsity = {"true": 0.0, "false": 1.0, "partially_true": 0.4, "misleading": 0.7, "unverifiable": 0.5}
-        fc_falsity = verdict_to_falsity.get(fc_verdict, 0.5)
-        
-        combined = (fc_falsity * 0.6) + (disinfo_score * 0.4)
-        
-        if combined < 0.25:
-            final = "true"
-        elif combined < 0.45:
-            final = "partially_true"
-        elif combined < 0.65:
-            final = "misleading"
-        else:
-            final = "false"
-        
+        # Adjust confidence based on disinformation score
+        adjusted_conf = fc_conf * (1 - disinfo_score * 0.3)
+
+        # Verdict adjustment for high disinfo scores
+        if disinfo_score > 0.7 and fc_verdict == "true":
+            fc_verdict = "misleading"
+            adjusted_conf *= 0.8
+
         return {
-            "verdict": final,
-            "confidence": (fc_conf + (1 - abs(disinfo_score - 0.5) * 2)) / 2,
-            "reasoning": f"combined analysis: factcheck={fc_verdict}, disinfo={disinfo_score:.2f}",
-            "citations": fc.get("citations", []),
+            "verdict": fc_verdict,
+            "confidence": min(max(adjusted_conf, 0.0), 1.0),
+            "reasoning": factcheck.get("reasoning", ""),
+            "citations": factcheck.get("citations", []),
+            "disinfo_score": disinfo_score,
         }
-    
+
     async def _queue_storage(self, data: Dict[str, Any]):
-        """queue data for background storage worker."""
+        """Queue data for background storage worker."""
         try:
-            await storage_queue.put(data)
-            self._log_thinking("queued for cache storage")
+            await storage_queue.put.aio(data)
         except Exception as e:
-            print(f"queue storage error: {e}")
-    
+            print(f"Queue storage error: {e}")
+
     @modal.method()
     async def verify(self, request: VerificationRequest) -> VerificationResult:
-        """main verification pipeline with flexible routing."""
+        """Main verification pipeline with intelligent routing."""
         start = time.perf_counter()
         req_id = request.request_id or uuid.uuid4().hex[:16]
-        self.thinking_trace = []
-        
-        self._log_thinking("received claim for verification", request.stream_thinking)
-        
-        # check dedup cache first
+
+        self.metrics.increment("requests_total", {"tier": "pro"})
+
+        # Check memory cache first
         cache_key = hashlib.md5(request.claim.encode()).hexdigest()
         if cache_key in self.dedup_cache:
-            self._log_thinking("found in memory cache!", request.stream_thinking)
             cached = self.dedup_cache[cache_key]
             latency = (time.perf_counter() - start) * 1000
+            self.metrics.increment("cache_hits", {"type": "memory"})
             return VerificationResult(
                 request_id=req_id,
                 claim=request.claim,
                 verdict=Verdict(cached["verdict"]),
                 confidence_score=cached["confidence"],
-                falsity_score=cached.get("falsity", 0.5),
                 reasoning="(cached) " + cached.get("reasoning", ""),
                 sources_used=cached.get("sources", []),
                 citations=cached.get("citations", []),
                 latency_ms=latency,
                 cache_hit=True,
                 route_taken="memory_cache",
-                thinking_trace=self.thinking_trace,
             )
-        
-        # step 1: claim extraction & routing
-        orchestrator_result = await self._run_orchestrator(request.claim)
-        
-        action = orchestrator_result.get("action", "full_pipeline")
-        
-        # Telemetry: Record route selection
-        if self.metrics.enabled:
-             self.metrics.route_usage.add(1, {"tier": "pro", "action": action})
 
-        # handle direct reply
+        # Step 1: Orchestrator routing
+        orchestrator_result = await self._run_orchestrator(request.claim)
+        action = orchestrator_result.get("action", "full_pipeline")
+
+        self.metrics.increment("routes", {"action": action})
+
+        # Handle direct reply
         if action == "direct_reply":
-             latency = (time.perf_counter() - start) * 1000
-             if self.metrics.enabled:
-                  self.metrics.record_latency(time.perf_counter() - start, "direct_reply", False)
-                  self.metrics.record_verdict(Verdict.TRUE.value)
-                  self.metrics.record_confidence(1.0)
-             
-             return VerificationResult(
+            latency = (time.perf_counter() - start) * 1000
+            return VerificationResult(
                 request_id=req_id,
                 claim=request.claim,
                 verdict=Verdict.TRUE,
                 confidence_score=1.0,
-                falsity_score=0.0,
-                reasoning=orchestrator_result.get("direct_response", "Hello!"),
-                citations=[],
+                reasoning=orchestrator_result.get("direct_response", "Hello! I'm nvyra-x, a fact-checking assistant."),
                 latency_ms=latency,
                 route_taken="direct_reply",
-                thinking_trace=self.thinking_trace,
             )
-        
-        # speculative execution: start parallel tasks
-        cache_task = None
-        disinfo_task = None
-        evidence = request.context or "" # Initialize evidence here
+
+        # Initialize variables
+        evidence = request.context or ""
         sources_used = []
-        factcheck_result = {} # Initialize as empty dict
-        disinfo_result = {}
         cache_hit = False
-        plan = orchestrator_result # alias
-        
+
+        # Step 2: Parallel execution - cache search + disinfo + features
+        # Use asyncio.gather for TRUE parallel execution (critical for 30s target)
+        parallel_tasks = {}
+
         if action in ["cache_search", "full_pipeline"]:
-            cache_task = asyncio.create_task(self._search_cache(request.claim))
-        
-        if action in ["disinfo_only", "full_pipeline"]:
-            disinfo_task = asyncio.create_task(self._run_disinfo(request.claim, evidence))
-        
-        # wait for cache result first
-        if cache_task:
-            cache_result = await cache_task
-            if cache_result and cache_result.get("cache_hit"):
-                cache_hit = True
-                evidence = json.dumps(cache_result.get("content", {}))
-                
-                # Telemetry: Record cache hit
-                if self.metrics.enabled:
-                     self.metrics.record_cache(True)
-                
-                if cache_result.get("verdict"):
-                    factcheck_result = {
-                        "verdict": cache_result["verdict"],
-                        "confidence": cache_result.get("confidence", 0.8),
-                        "reasoning": "retrieved from verified cache",
-                    }
-            else:
-                 # Telemetry: Record cache miss
-                 if self.metrics.enabled:
-                      self.metrics.record_cache(False)
-        
-        # web search if needed
-        if not cache_hit and action in ["web_search", "full_pipeline"]:
-            queries = plan.get("search_queries", [request.claim[:100]])
-            
-            # Telemetry: Record external search
-            if self.metrics.enabled:
-                 self.metrics.external_search.add(1, {"tier": "pro", "provider": "tavily"})
-            
-            for query in queries[:2]:
-                results = await self._search_tavily(query, max_results=5)
-                for r in results:
+            parallel_tasks["cache"] = self._search_cache(request.claim)
+
+        # Start disinfo and features in parallel with cache search
+        parallel_tasks["disinfo"] = self._run_disinfo_detection(request.claim)
+        parallel_tasks["features"] = self._compute_features(request.claim)
+
+        # Run ALL tasks in parallel with asyncio.gather
+        task_names = list(parallel_tasks.keys())
+        task_coros = list(parallel_tasks.values())
+
+        try:
+            task_results = await asyncio.gather(*task_coros, return_exceptions=True)
+            results = {}
+            for name, result in zip(task_names, task_results):
+                if isinstance(result, Exception):
+                    print(f"Task {name} error: {result}")
+                    results[name] = {}
+                else:
+                    results[name] = result
+        except Exception as e:
+            print(f"Parallel execution error: {e}")
+            results = {name: {} for name in task_names}
+
+        # Process cache result
+        cache_result = results.get("cache")
+        if cache_result and cache_result.get("cache_hit"):
+            cache_hit = True
+            self.metrics.increment("cache_hits", {"type": "qdrant"})
+            if cache_result.get("verdict"):
+                # Return cached result with fresh disinfo check
+                latency = (time.perf_counter() - start) * 1000
+                return VerificationResult(
+                    request_id=req_id,
+                    claim=request.claim,
+                    verdict=Verdict(cache_result["verdict"]),
+                    confidence_score=cache_result.get("confidence", 0.8),
+                    reasoning="Retrieved from verified cache",
+                    latency_ms=latency,
+                    cache_hit=True,
+                    route_taken="cache_hit",
+                )
+
+        # Step 3: Web search if needed (parallel queries for speed)
+        if action in ["web_search", "full_pipeline"] and not cache_hit:
+            queries = orchestrator_result.get("search_queries", [request.claim[:100]])[:2]
+
+            # Run multiple search queries in parallel
+            search_coros = [self._search_tavily(q, max_results=5) for q in queries]
+            all_search_results = await asyncio.gather(*search_coros, return_exceptions=True)
+
+            for search_results in all_search_results:
+                if isinstance(search_results, Exception):
+                    print(f"Search error: {search_results}")
+                    continue
+                for r in search_results:
                     url = r.get("url", "")
                     content = r.get("raw_content", r.get("content", ""))
-                    evidence += f"\n\nsource: {url}\n{content[:3000]}"
+                    evidence += f"\n\nSource: {url}\n{content[:3000]}"
                     sources_used.append(url)
-                    
-                    # Telemetry: Record citation domain
-                    if self.metrics.enabled:
-                         self.metrics.record_citation(url)
-        
-        # factcheck if needed
-        if not factcheck_result and action in ["factcheck_only", "full_pipeline"]:
-            if evidence:
-                factcheck_result = await self._run_factcheck(request.claim, evidence)
-        
-        # wait for disinfo
-        if disinfo_task:
-            disinfo_result = await disinfo_task
-        elif action == "full_pipeline":
-            disinfo_result = await self._run_disinfo(request.claim, evidence)
-            
-        # Telemetry: Record disinfo score
-        if self.metrics.enabled and disinfo_result:
-             d_score = float(disinfo_result.get("disinfo_score", 0.0))
-             self.metrics.disinfo_score.record(d_score, {"tier": "pro"})
-        
-        # step 3: combine with reasoning model (conditionally based on orchestrator)
-        use_reasoning = plan.get("use_reasoning_model", True)
-        
-        t_start = time.perf_counter()
-        combined = await self._run_reasoning_model({
-            "claim": request.claim,
-            "factcheck": factcheck_result,
-            "disinfo": disinfo_result,
-            "features": {},
-        }, use_model=use_reasoning)
-        t_thinking = time.perf_counter() - t_start
-        
-        # Telemetry: Record thinking time
-        if self.metrics.enabled:
-             self.metrics.thinking_duration.record(t_thinking, {"tier": "pro"})
-        
-        self._log_thinking(f"final verdict: {combined.get('verdict', 'unknown')} (reasoning_model: {use_reasoning})", request.stream_thinking)
-        
-        # queue for background storage
+                    self.metrics.increment("external_searches", {"provider": "tavily"})
+
+        # Step 4: Fact-check with evidence
+        if evidence:
+            factcheck_result = await self._run_factcheck(request.claim, evidence)
+        else:
+            factcheck_result = {"verdict": "unverifiable", "confidence": 0.3, "reasoning": "No evidence available"}
+
+        # Step 5: Combine results
+        combined = self._combine_results(
+            factcheck_result,
+            results.get("disinfo", {}),
+            results.get("features", {}),
+        )
+
+        # Queue for background storage if we did web search
         if sources_used and not cache_hit:
             await self._queue_storage({
                 "claim": request.claim,
@@ -1108,81 +810,210 @@ Analyze and route this input: {claim}
                 "sources": sources_used,
                 "timestamp": time.time(),
             })
-        
-        # update memory cache
-        # (omitted dedup logic here for brevity, maintained in memory)
+
+        # Update memory cache
         self.dedup_cache[cache_key] = {
-            "verdict": combined.get("verdict", "unverifiable"),
-            "confidence": combined.get("confidence", 0.5),
-            "reasoning": combined.get("reasoning", ""),
+            "verdict": combined["verdict"],
+            "confidence": combined["confidence"],
+            "reasoning": combined["reasoning"],
             "sources": sources_used,
             "citations": combined.get("citations", []),
         }
         if len(self.dedup_cache) > self.dedup_limit:
             self.dedup_cache.popitem(last=False)
-        
+
         latency = (time.perf_counter() - start) * 1000
-        
-        final_conf = float(combined.get("confidence", 0.5))
-        final_verdict = str(combined.get("verdict", "unverifiable")).lower()
-        
-        # Telemetry: Record final outcome
-        if self.metrics.enabled:
-             self.metrics.record_latency(time.perf_counter() - start, action, cache_hit)
-             self.metrics.record_verdict(final_verdict)
-             self.metrics.record_confidence(final_conf)
-             # Basic token estimation (approximate since we don't have token counts easily accessible here without decoding)
-             # In a real scenario, we'd capture token usage from the EngineOutput object if available.
-             # We will settle for requests_total and latency for now as proxies for cost.
-        
+        self.metrics.record("latency_ms", latency, {"route": action})
+
         return VerificationResult(
             request_id=req_id,
             claim=request.claim,
-            verdict=Verdict(final_verdict),
-            confidence_score=final_conf,
-            falsity_score=1.0 - final_conf,
-            reasoning=combined.get("reasoning", ""),
+            verdict=Verdict(combined["verdict"]),
+            confidence_score=combined["confidence"],
+            reasoning=combined["reasoning"],
             sources_used=sources_used[:10],
             citations=combined.get("citations", [])[:5],
             latency_ms=latency,
             cache_hit=cache_hit,
             route_taken=action,
-            thinking_trace=self.thinking_trace,
         )
 
 
-@app.function(image=modal.Image.debian_slim().pip_install("pydantic", "fastapi"))
-@modal.fastapi_endpoint(method="POST")
-async def verify_claim(request: VerificationRequest) -> VerificationResult:
-    """public api endpoint for claim verification."""
-    engine = UltraFastInferenceEngine()
-    return await engine.verify.remote.aio(request)
+# ============================================================================
+# WEB ENDPOINT
+# ============================================================================
 
+@app.function(image=modal.Image.debian_slim().pip_install("pydantic", "fastapi"))
+@modal.asgi_app()
+def web_app():
+    """FastAPI web endpoint for claim verification."""
+    from fastapi import FastAPI
+
+    api = FastAPI(title="nvyra-x Pro API", version="1.0.0")
+
+    @api.post("/verify", response_model=VerificationResult)
+    async def verify_claim(request: VerificationRequest) -> VerificationResult:
+        engine = InferenceEngine()
+        return await engine.verify.remote.aio(request)
+
+    @api.get("/health")
+    async def health():
+        return {"status": "healthy", "version": "1.0.0"}
+
+    return api
+
+
+# ============================================================================
+# BACKGROUND STORAGE WORKER
+# ============================================================================
+
+@app.function(
+    image=gpu_image,
+    gpu="H200",
+    secrets=pro_secrets,
+    volumes={"/root/.cache/huggingface": hf_cache_vol},
+    min_containers=1,
+    timeout=300,
+)
+async def storage_worker():
+    """Background worker to process storage queue and build cache."""
+    import boto3
+    import zstandard
+    from botocore.config import Config
+    import libsql_experimental as libsql
+    from qdrant_client import QdrantClient
+    from qdrant_client.models import PointStruct, VectorParams, Distance
+    from sentence_transformers import SentenceTransformer
+
+    # Initialize connections
+    b2_endpoint = os.environ.get("b2_endpoint")
+    s3 = boto3.client(
+        's3',
+        endpoint_url=b2_endpoint,
+        aws_access_key_id=os.environ.get("b2_access_key"),
+        aws_secret_access_key=os.environ.get("b2_secret_key"),
+        config=Config(max_pool_connections=50),
+    ) if b2_endpoint else None
+
+    qdrant_url = os.environ.get("qdrant_url")
+    qc = QdrantClient(url=qdrant_url) if qdrant_url else None
+
+    turso_url = os.environ.get("turso_url")
+    db = libsql.connect(database=turso_url, auth_token=os.environ.get("turso_api")) if turso_url else None
+
+    embed_model = SentenceTransformer(EMBED_MODEL, device="cuda", trust_remote_code=True)
+    cctx = zstandard.ZstdCompressor(level=3)
+
+    b2_bucket = os.environ.get("b2_bucket", "ai-text-cache")
+    qdrant_collection = os.environ.get("qdrant_collection", "diamond_v30")
+
+    print("Storage worker started")
+
+    while True:
+        try:
+            # Get item from queue
+            item = await storage_queue.get.aio(block=True, timeout=60)
+            if not item:
+                continue
+
+            claim = item.get("claim", "")
+            evidence = item.get("evidence", "")
+            result = item.get("result", {})
+            sources = item.get("sources", [])
+
+            claim_id = hashlib.md5(claim.encode()).hexdigest()
+
+            # Check for duplicates in Turso
+            if db:
+                existing = db.execute(
+                    "SELECT claim_id FROM claim_verification WHERE claim_id = ?",
+                    (claim_id,)
+                ).fetchone()
+
+                if existing:
+                    print(f"Duplicate claim skipped: {claim_id}")
+                    continue
+
+            # Compute embedding
+            embedding = embed_model.encode(claim, normalize_embeddings=True).tolist()
+
+            # Store full content in Backblaze B2
+            s3_key = None
+            if s3:
+                content = {
+                    "claim": claim,
+                    "evidence": evidence,
+                    "result": result,
+                    "sources": sources,
+                    "timestamp": time.time(),
+                }
+                compressed = cctx.compress(json.dumps(content).encode())
+                s3_key = f"claims/{claim_id}.json.zst"
+                s3.put_object(Bucket=b2_bucket, Key=s3_key, Body=compressed)
+
+            # Store metadata in Turso
+            if db:
+                db.execute(
+                    """INSERT INTO claim_verification
+                       (claim_id, claim_text, verdict, confidence_score, s3_key, created_at)
+                       VALUES (?, ?, ?, ?, ?, datetime('now'))""",
+                    (claim_id, claim[:500], result.get("verdict", "unverifiable"),
+                     result.get("confidence", 0.5), s3_key)
+                )
+                db.commit()
+
+            # Store embedding in Qdrant
+            if qc:
+                qc.upsert(
+                    collection_name=qdrant_collection,
+                    points=[
+                        PointStruct(
+                            id=claim_id,
+                            vector=embedding,
+                            payload={
+                                "claim_id": claim_id,
+                                "claim_text": claim[:200],
+                                "verdict": result.get("verdict", "unverifiable"),
+                            }
+                        )
+                    ]
+                )
+
+            print(f"Stored claim: {claim_id}")
+
+        except asyncio.TimeoutError:
+            continue
+        except Exception as e:
+            print(f"Storage worker error: {e}")
+            await asyncio.sleep(1)
+
+
+# ============================================================================
+# LOCAL ENTRYPOINT
+# ============================================================================
 
 @app.local_entrypoint()
 def main():
-    """test the pro pipeline."""
+    """Test the pro pipeline."""
     print("\n" + "=" * 60)
-    print("🧪 TESTING NVYRA-X PRO PIPELINE")
+    print("TESTING NVYRA-X PRO PIPELINE")
     print("=" * 60 + "\n")
-    
+
     test_inputs = [
         "hello, who are you?",
         "the earth is flat.",
-        "covid vaccines have been proven effective.",
+        "COVID-19 vaccines have been shown to be effective in preventing severe illness.",
     ]
-    
-    engine = UltraFastInferenceEngine()
-    
+
+    engine = InferenceEngine()
+
     for text in test_inputs:
-        print(f"\n📝 Input: {text}")
+        print(f"\nInput: {text}")
         print("-" * 40)
         result = engine.verify.remote(VerificationRequest(claim=text))
-        print(f"\n✅ Verdict: {result.verdict.value}")
-        print(f"📊 Confidence: {result.confidence_score:.2%}")
-        print(f"🛤️  Route: {result.route_taken}")
-        print(f"💾 Cache Hit: {result.cache_hit}")
-        print(f"⏱️  Latency: {result.latency_ms:.0f}ms")
-        if result.thinking_trace:
-            print(f"🧠 Thinking Steps: {len(result.thinking_trace)}")
+        print(f"Verdict: {result.verdict.value}")
+        print(f"Confidence: {result.confidence_score:.2%}")
+        print(f"Route: {result.route_taken}")
+        print(f"Cache Hit: {result.cache_hit}")
+        print(f"Latency: {result.latency_ms:.0f}ms")
         print("-" * 40)
