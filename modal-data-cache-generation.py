@@ -9,8 +9,10 @@
 #  Dissemination of this information or reproduction of this material is
 #  strictly forbidden unless prior written permission is obtained from nvyra-x.
 # ------------------------------------------------------------------------------
+# Model inference for pro tier, on vLLM on Modal. 
+# Works on H200
 
-%%writefile y.py
+# %%writefile y.py
 import sys
 import os
 import time
@@ -26,23 +28,16 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor
 
-# Configuration
 APP_NAME = "data-cache-generation"
 data_vol = modal.Volume.from_name("rag-harvest-storage-prod", create_if_missing=True)
 hf_cache_vol = modal.Volume.from_name("huggingface-cache", create_if_missing=True)
-
-# SECRET MAPPING
 my_secrets = [
     modal.Secret.from_name("huggingface-secret"), 
     modal.Secret.from_name("turso-api-new")
 ]
-
-# TUNING
 vllm_gpu_utalisation = 0.50  
 pipeline_batch_size = 128        
 max_gpus = 1              
-
-# ENV
 os.environ["VLLM_ATTENTION_BACKEND"] = "FLASH_ATTN" 
 os.environ["VLLM_ALLOW_LONG_MAX_MODEL_LEN"] = "1"
 os.environ["NCCL_P2P_DISABLE"] = "1"
@@ -51,10 +46,8 @@ os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
 os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True,garbage_collection_threshold:0.8"
 
-# Image Definition 
-
 def download_artifacts():
-    print("⚡ [BUILD] Parallel Fetching...")
+    print(" Parallel Fetching...")
     from transformers import AutoTokenizer
     models = [
         "Qwen/Qwen3-Reranker-0.6B",
@@ -66,8 +59,7 @@ def download_artifacts():
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(8) as ex:
         ex.map(lambda m: AutoTokenizer.from_pretrained(m, trust_remote_code=True), models)
-
-# GPU Image 
+        
 gpu_image = (
     modal.Image.from_registry("nvidia/cuda:12.6.0-cudnn-devel-ubuntu22.04", add_python="3.12")
     .apt_install("git", "wget", "libzstd-dev", "build-essential", "ninja-build")
@@ -83,8 +75,6 @@ gpu_image = (
     .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
     .run_function(download_artifacts, secrets=my_secrets, volumes={"/root/.cache/huggingface": hf_cache_vol})
 )
-
-# CPU image 
 cpu_image = (
     modal.Image.debian_slim(python_version="3.12")
     .pip_install("libsql-experimental", "boto3", "qdrant-client", "polars", "pyarrow", "rank-bm25", "datasketch", "transformers", "hf_transfer")
@@ -93,8 +83,6 @@ cpu_image = (
 )
 
 app = modal.App(APP_NAME, secrets=my_secrets)
-
-# Logging Metrics
 
 @dataclass
 class PipelineMetrics:
@@ -115,8 +103,6 @@ class PipelineMetrics:
             "processed": self.items_processed,
             "saved": {"turso": self.items_saved_turso, "qdrant": self.items_saved_qdrant, "s3": self.items_saved_s3}
         }))
-
-#Dataset Loader (CPU)
 @app.cls(image=cpu_image, volumes={"/data": data_vol}, timeout=1200)
 class DatasetLoader:
     @modal.method()
@@ -130,17 +116,17 @@ class DatasetLoader:
         tok_lite = AutoTokenizer.from_pretrained("Qwen/Qwen3-Reranker-0.6B", trust_remote_code=True)
         tok_heavy = AutoTokenizer.from_pretrained("Qwen/Qwen3-Reranker-8B", trust_remote_code=True)
 
-        print(f"⚡ Streaming from {input_file}...")
+        print(f" Streaming from {input_file}...")
         try:
             with open(input_file, 'rb') as f:
                 reader = pa.ipc.open_stream(f)
                 pa_table = reader.read_all()
             df = pl.from_arrow(pa_table)
         except Exception as e:
-            print(f"❌ Failed to read Arrow Stream: {e}")
+            print(f" Failed to read Arrow Stream: {e}")
             return []
         
-        print("⚡ Aggregating & Pruning Context (25k Limit)...")
+        print(" Aggregating & Pruning Context (25k Limit)...")
         df = df.group_by("claim_id").agg([
             pl.col("claim_text").first(),
             pl.col("raw_doc_text").alias("docs"),
@@ -212,7 +198,6 @@ class DatasetLoader:
         processed_items.sort(key=lambda x: x['lcp_hash'])
         return processed_items
 
-# Database Scanner
 @app.cls(image=cpu_image, secrets=my_secrets)
 class DBScanner:
     @modal.method()
@@ -228,10 +213,9 @@ class DBScanner:
             rows = db.execute("SELECT claim_id FROM claim_metadata").fetchall()
             return [r[0] for r in rows]
         except Exception as e:
-            print(f"⚠️ Failed to fetch existing IDs: {e}")
+            print(f" Failed to fetch existing IDs: {e}")
             return []
 
-# Modal Paramaters
 @app.cls(
     image=gpu_image, 
     gpu="H200", 
@@ -261,41 +245,36 @@ class GodModeRefinery:
         self.dedup_limit = 50000
         self.aux_stream = torch.cuda.Stream()
         self.metrics = PipelineMetrics()
-        
-        # --- STORAGE INIT (Inside Monolith) ---
         self.cctx = zstandard.ZstdCompressor(level=3)
         self.s3 = boto3.client(
             's3', 
             endpoint_url="https://s3.eu-central-003.backblazeb2.com", 
             aws_access_key_id="00356bc3d6937610000000004", 
             aws_secret_access_key="K0036GxH+hhmmADw9yh8aspgXhvu6fo",
-            config=Config(max_pool_connections=100) # 🔥 Bottleneck fix
+            config=Config(max_pool_connections=100) 
         )
         self.qc = QdrantClient(url="http://95.111.232.85:6333")
         turso_url = "https://ai-metadata-cache-f-b.aws-eu-west-1.turso.io"
         turso_token = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjYzNDE4NzEsImlkIjoiYmYwODMzM2MtNTZlMS00ZDJhLWIwYmItMGUzOTMyODI0Y2FlIiwicmlkIjoiMjBmOGYyNjgtODkzYS00NTk5LWI0NWYtMDc3M2MxOGYwNjZiIn0.U-A2yG0WcrG1gikhyNrreLm9cDqlQstgiT9IW9mtgM111xNKjEnoEohOnWY9uNXD2kGpe-tHfb54b_hHCXvEBw"
         self.db = libsql.connect(database=turso_url, auth_token=turso_token)
-        
-        # Ensure Schema
         self.db.execute("CREATE TABLE IF NOT EXISTS claim_metadata (id TEXT PRIMARY KEY, claim_id TEXT, verdict TEXT, falsity_score REAL, lite_score REAL, heavy_score REAL, s3_key TEXT, source_urls TEXT, source_titles TEXT, source_publishers TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)")
         self.db.execute("CREATE INDEX IF NOT EXISTS idx_claim_id ON claim_metadata(claim_id)")
         self.db.commit()
         
-        # --- MODEL LOADING ---
-        print("⚡ [INIT] Loading Aux Models (BF16 + FA3)...")
+        print(" Loading Aux Models (BF16 + FA3)...")
         def load_fast(model, cls, **kwargs):
             return cls.from_pretrained(model, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_3", **kwargs).to("cuda:0").eval()
 
         def load_robust_splade(model_name, cls, **kwargs):
             try:
-                print(f"   ⚡ Attempting SPLADE with Flash Attention 3 (BFloat16)...")
+                print(f" Attempting to load SPLADE with Flash Attention 3 (BFloat16)...")
                 return cls.from_pretrained(model_name, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2", **kwargs).to("cuda:0").eval()
             except Exception: pass
             try:
-                print(f"   ⚡ Attempting SPLADE with SDPA (BFloat16)...")
+                print(f" Attempting to load SPLADE with SDPA (BFloat16)...")
                 return cls.from_pretrained(model_name, torch_dtype=torch.bfloat16, attn_implementation="sdpa", **kwargs).to("cuda:0").eval()
             except Exception: pass
-            print(f"   🐢 Falling back to SPLADE Eager Mode (BFloat16)...")
+            print(f"  Falling back to SPLADE Eager Mode (BFloat16)...")
             return cls.from_pretrained(model_name, torch_dtype=torch.bfloat16, attn_implementation="eager", **kwargs).to("cuda:0").eval()
 
         self.model_lite = load_fast("Qwen/Qwen3-Reranker-0.6B", AutoModelForCausalLM, trust_remote_code=True)
@@ -310,7 +289,7 @@ class GodModeRefinery:
         self.yes_id = 7866 
         self.no_id = 1489 
 
-        print(f"🧠 [INIT] Async VLLM + Nemotron 30B (FP8) [FLASH_ATTN] on H200...")
+        print(f" Async VLLM + Nemotron 30B (FP8) [FLASH_ATTN] on H200...")
         engine_args = AsyncEngineArgs(
             model="nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8",
             trust_remote_code=True,
@@ -328,7 +307,7 @@ class GodModeRefinery:
 
     def _calibrate_batch_size_smart(self):
         import torch
-        print("⚡ [tuning] Starting Smart Binary Search Calibration...")
+        print("Starting Smart Binary Search Calibration...")
         low, high, current, max_limit = 2, None, 2, 256
         dummy_ids = [[1] * 1024] * max_limit 
         
@@ -336,23 +315,23 @@ class GodModeRefinery:
             with torch.inference_mode():
                 while current <= max_limit:
                     try:
-                        print(f"   Testing Batch: {current}...", end="", flush=True)
+                        print(f"Testing Batch: {current}...", end="", flush=True)
                         batch = dummy_ids[:current]
                         input_tensor = torch.tensor(batch, device=self.device)
                         attn_mask = (input_tensor != 0).long()
                         _ = self.model_heavy(input_ids=input_tensor, attention_mask=attn_mask)
                         del input_tensor, attn_mask
-                        print(" ✅ OK")
+                        print("Ok")
                         low = current
                         current *= 2
                     except RuntimeError:
-                        print(" ❌ OOM")
+                        print("OOM")
                         high = current
                         torch.cuda.empty_cache()
                         break
                 
                 if high is None: high = max_limit 
-                print(f"   🔍 Refining between {low} and {high}...")
+                print(f"Refining between {low} and {high}...")
                 final_safe = low
                 while low <= high:
                     mid = (low + high) // 2
@@ -364,16 +343,16 @@ class GodModeRefinery:
                         attn_mask = (input_tensor != 0).long()
                         _ = self.model_heavy(input_ids=input_tensor, attention_mask=attn_mask)
                         del input_tensor, attn_mask
-                        print(" ✅ OK")
+                        print("Ok")
                         final_safe = mid
                         low = mid + 1
                     except RuntimeError:
-                        print(" ❌ OOM")
+                        print("OOM")
                         torch.cuda.empty_cache()
                         high = mid - 1
         
         optimal = int(final_safe * 0.95)
-        print(f"⚡ [tuning] Exact Max: {final_safe}. Optimized Batch Size: {optimal}")
+        print(f"[tuning] Exact Max: {final_safe}. Optimized Batch Size: {optimal}")
         return optimal
 
     def _run_aux_model(self, model, input_ids: List[List[int]], task_type: str, texts: List[str] = None):
@@ -450,11 +429,8 @@ class GodModeRefinery:
             return final_output.outputs[0].text
         except Exception: return None
 
-    # Save Logic
     def _save_batch(self, flat_results):
         if not flat_results: return
-        
-        # Lazy imports for safe saving
         from qdrant_client.models import PointStruct, SparseVector
         
         def _up(x):
@@ -477,7 +453,7 @@ class GodModeRefinery:
             self.db.commit()
             self.metrics.items_saved_turso += len(flat_results)
         except Exception as e:
-            print(f"⚠️ Turso Error: {e}")
+            print(f" Turso Error: {e}")
             self.db.rollback()
             self.metrics.errors_db += 1
 
@@ -580,27 +556,22 @@ class GodModeRefinery:
             item['sparse_idx'] = s_ind[i]
             item['sparse_val'] = s_val[i]
             item['record_uuid'] = str(uuid.uuid4())
-
-        # Blocking Save to prevent backlog
         await asyncio.to_thread(self._save_batch, final_results)
-
-# Orchestrator
 
 @app.local_entrypoint()
 def main(input_file: str):
     if not input_file: 
-        print("❌ Usage: modal run y.py --input-file data.arrow")
+        print("Usage: modal run y.py --input-file data.arrow")
         return
     
-    print("⚡ Triggering Remote Dataset Loader...")
+    print("Triggering Remote Dataset Loader...")
     processed_items = DatasetLoader().process_and_rank.remote(input_file)
     
     if not processed_items:
-        print("❌ No items returned.")
+        print("No items returned.")
         return
     
-    print("⚡ Checking for existing progress in DB...")
-    # Use lightweight scanner (CPU)
+    print(" Checking for existing progress in DB...")
     existing_ids = set(DBScanner().get_existing_ids.remote())
     print(f"   Found {len(existing_ids)} previously processed claims.")
     
@@ -609,13 +580,13 @@ def main(input_file: str):
     skipped_count = initial_count - len(processed_items)
     
     if skipped_count > 0:
-        print(f"⏩ SKIPPING {skipped_count} items (already in DB).")
-        print(f"🔥 Dispatching {len(processed_items)} Remaining items to H200...")
+        print(f" Skipped {skipped_count} items (already in DB).")
+        print(f" Dispatching {len(processed_items)} Remaining items to H200...")
     else:
-        print(f"🔥 Dispatching {len(processed_items)} items (Fresh Run) to H200...")
+        print(f" Dispatching {len(processed_items)} items (Fresh Run) to H200...")
     
     if not processed_items:
-        print("✅ Job Complete (Nothing new to process).")
+        print(" Job Complete (Nothing new to process).")
         return
 
     refinery = GodModeRefinery()
@@ -625,8 +596,6 @@ def main(input_file: str):
         for i in range(0, len(processed_items), pipeline_batch_size):
             batch = processed_items[i:i+pipeline_batch_size]
             futs.append(asyncio.create_task(refinery.process_batch.remote.aio(batch)))
-            
-            # Allow event loop to breathe
             if len(futs) > 50:
                 done, _ = await asyncio.wait(futs, return_when=asyncio.FIRST_COMPLETED)
                 futs = [f for f in futs if not f.done()]
