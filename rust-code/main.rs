@@ -1,7 +1,7 @@
 //! nvyra-x high-performance inference client
 //! 
-//! state-of-the-art rust implementation targeting 10,000+ requests per second
-//! optimized for h200 gpu batch processing with adaptive batching and circuit breakers
+//! state-of-the-art rust implementation targeting 2,000+ requests per second
+//! optimized for H200 gpu batch processing with adaptive batching and circuit breakers
 
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -42,30 +42,19 @@ use dispatcher::ConnectionPool;
 use circuit_breaker::CircuitBreaker;
 use metrics::MetricsCollector;
 
-
-/// command line arguments
 #[derive(Parser, Debug)]
 #[command(name = "nvyra-x-client")]
 #[command(about = "high-performance inference client for nvyra-x")]
 #[command(version)]
 struct Args {
-    /// modal endpoint url for pro tier (h200)
     #[arg(long, env = "NVYRA_PRO_URL")]
     pro_url: Option<String>,
-    
-    /// modal endpoint url for free tier (cpu)
     #[arg(long, env = "NVYRA_FREE_URL")]
     free_url: Option<String>,
-    
-    /// input file path (csv, jsonl, or arrow)
     #[arg(short, long)]
     input: PathBuf,
-    
-    /// output file path for results
     #[arg(short, long, default_value = "results.jsonl")]
     output: PathBuf,
-    
-    /// target tier: pro or free
     #[arg(short, long, default_value = "pro")]
     tier: String,
     
@@ -102,8 +91,6 @@ struct Args {
     workers: Option<usize>,
 }
 
-
-/// input claim item
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 #[rkyv(derive(Debug))]
@@ -113,16 +100,10 @@ struct ClaimItem {
     #[serde(default)]
     context: Option<String>,
 }
-
-
-/// batch payload for modal endpoint
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct BatchPayload {
     items: Vec<VerificationRequest>,
 }
-
-
-/// verification request matching modal api
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct VerificationRequest {
     claim: String,
@@ -132,8 +113,6 @@ struct VerificationRequest {
     request_id: Option<String>,
 }
 
-
-/// verification result from modal api
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct VerificationResult {
     request_id: String,
@@ -150,9 +129,6 @@ struct VerificationResult {
     #[serde(default)]
     storage_status: Option<HashMap<String, bool>>,
 }
-
-
-/// pipeline statistics
 struct PipelineStats {
     items_sent: AtomicU64,
     items_succeeded: AtomicU64,
@@ -164,7 +140,6 @@ struct PipelineStats {
     circuit_trips: AtomicU64,
     retries: AtomicU64,
 }
-
 impl PipelineStats {
     fn new() -> Self {
         Self {
@@ -179,12 +154,10 @@ impl PipelineStats {
             retries: AtomicU64::new(0),
         }
     }
-    
     fn throughput(&self, duration: Duration) -> f64 {
         let items = self.items_succeeded.load(Ordering::Relaxed) as f64;
         items / duration.as_secs_f64()
     }
-    
     fn avg_latency_ms(&self) -> f64 {
         let items = self.items_succeeded.load(Ordering::Relaxed) as f64;
         let total_us = self.total_latency_us.load(Ordering::Relaxed) as f64;
@@ -195,9 +168,6 @@ impl PipelineStats {
         }
     }
 }
-
-
-/// main application state
 struct Application {
     args: Args,
     stats: Arc<PipelineStats>,
@@ -252,8 +222,6 @@ impl Application {
         info!("  tier: {}", self.args.tier);
         info!("  max connections: {}", self.args.max_connections);
         info!("  batch size: {} -> {}", self.args.batch_size, self.args.max_batch_size);
-        
-        // spawn metrics server
         let metrics_clone = self.metrics.clone();
         let metrics_port = self.args.metrics_port;
         tokio::spawn(async move {
@@ -323,8 +291,6 @@ impl Application {
             });
             dispatcher_handles.push(handle);
         }
-        
-        // spawn writer task (if not benchmark mode)
         let writer_handle = if !self.args.benchmark {
             let output_path = self.args.output.clone();
             let result_rx_clone = result_rx.clone();
@@ -332,7 +298,6 @@ impl Application {
                 Self::write_results(output_path, result_rx_clone).await
             }))
         } else {
-            // just drain results
             let result_rx_clone = result_rx.clone();
             Some(tokio::spawn(async move {
                 while result_rx_clone.recv_async().await.is_ok() {}
@@ -358,30 +323,19 @@ impl Application {
                 ));
             }
         });
-        
-        // wait for reader to finish
         drop(item_tx);
         reader_handle.await??;
-        
-        // wait for batcher to finish
         drop(batch_tx);
         batcher_handle.await??;
-        
-        // wait for dispatchers to finish
         for handle in dispatcher_handles {
             let _ = handle.await;
         }
-        
-        // wait for writer to finish
         drop(result_tx);
         if let Some(handle) = writer_handle {
             handle.await??;
         }
-        
         monitor_handle.abort();
-        
         let duration = start.elapsed();
-        
         pb.finish_with_message(format!(
             "completed in {:.2}s | {} items | {:.0} rps | avg latency: {:.1}ms",
             duration.as_secs_f64(),
@@ -392,7 +346,6 @@ impl Application {
         
         Ok(())
     }
-    
     async fn read_input(path: PathBuf, tx: flume::Sender<ClaimItem>) -> Result<()> {
         let extension = path.extension()
             .and_then(|e| e.to_str())
@@ -405,7 +358,6 @@ impl Application {
             _ => anyhow::bail!("unsupported file format: {}", extension),
         }
     }
-    
     async fn read_csv(path: PathBuf, tx: flume::Sender<ClaimItem>) -> Result<()> {
         let file = File::open(&path).await?;
         let reader = AsyncBufReader::new(file);
@@ -424,10 +376,8 @@ impl Application {
                 }
             }
         }
-        
         Ok(())
     }
-    
     async fn read_jsonl(path: PathBuf, tx: flume::Sender<ClaimItem>) -> Result<()> {
         let file = File::open(&path).await?;
         let reader = AsyncBufReader::new(file);
@@ -483,10 +433,8 @@ impl Application {
                 }
             }
         }
-        
         Ok(())
     }
-    
     async fn batch_items(
         batcher: Arc<AdaptiveBatcher>,
         rx: flume::Receiver<ClaimItem>,
@@ -661,7 +609,6 @@ impl Application {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // initialize tracing
     tracing_subscriber::fmt()
         .with_max_level(Level::INFO)
         .with_target(false)
