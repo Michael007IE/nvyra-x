@@ -1,12 +1,6 @@
-//! adaptive batcher module
-//! 
-//! dynamically adjusts batch size based on latency feedback and throughput metrics
-
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 use parking_lot::RwLock;
-
-/// target latency for a batch in milliseconds
 const TARGET_LATENCY_MS: u64 = 50;
 
 /// minimum batch size
@@ -14,8 +8,6 @@ const MIN_BATCH_SIZE: usize = 16;
 
 /// latency window size for averaging
 const LATENCY_WINDOW_SIZE: usize = 100;
-
-
 /// adaptive batcher that adjusts batch size based on latency feedback
 pub struct AdaptiveBatcher {
     current_size: AtomicUsize,
@@ -28,7 +20,6 @@ pub struct AdaptiveBatcher {
 }
 
 impl AdaptiveBatcher {
-    /// create new adaptive batcher
     pub fn new(initial_size: usize, max_size: usize, flush_interval: Duration) -> Self {
         Self {
             current_size: AtomicUsize::new(initial_size),
@@ -40,18 +31,12 @@ impl AdaptiveBatcher {
             adjustment_cooldown: Duration::from_secs(5),
         }
     }
-    
-    /// get current batch size
     pub fn current_size(&self) -> usize {
         self.current_size.load(Ordering::Relaxed)
     }
-    
-    /// get flush interval
     pub fn flush_interval(&self) -> Duration {
         self.flush_interval
     }
-    
-    /// record a latency sample and potentially adjust batch size
     pub fn record_latency(&self, latency: Duration) {
         let mut samples = self.latency_samples.write();
         
@@ -59,36 +44,25 @@ impl AdaptiveBatcher {
             samples.remove(0);
         }
         samples.push(latency);
-        
-        // check if we should adjust
         let mut last_adj = self.last_adjustment.write();
         if last_adj.elapsed() < self.adjustment_cooldown {
             return;
         }
-        
         if samples.len() < 10 {
             return;
         }
-        
-        // calculate average latency
         let avg_latency_ms: u64 = samples.iter()
             .map(|d| d.as_millis() as u64)
             .sum::<u64>() / samples.len() as u64;
         
         let current = self.current_size.load(Ordering::Relaxed);
-        
-        // adjust batch size based on latency
         let new_size = if avg_latency_ms < TARGET_LATENCY_MS / 2 {
-            // latency is very low, increase batch size aggressively
             (current * 3 / 2).min(self.max_size)
         } else if avg_latency_ms < TARGET_LATENCY_MS {
-            // latency is acceptable, slight increase
             (current + current / 8).min(self.max_size)
         } else if avg_latency_ms > TARGET_LATENCY_MS * 2 {
-            // latency is too high, decrease batch size aggressively
             (current / 2).max(self.min_size)
         } else if avg_latency_ms > TARGET_LATENCY_MS {
-            // latency is slightly high, slight decrease
             (current - current / 8).max(self.min_size)
         } else {
             current
@@ -103,8 +77,6 @@ impl AdaptiveBatcher {
             );
         }
     }
-    
-    /// get statistics about the batcher
     pub fn stats(&self) -> BatcherStats {
         let samples = self.latency_samples.read();
         
@@ -131,9 +103,6 @@ impl AdaptiveBatcher {
         }
     }
 }
-
-
-/// batcher statistics
 #[derive(Debug, Clone)]
 pub struct BatcherStats {
     pub current_batch_size: usize,
@@ -141,8 +110,6 @@ pub struct BatcherStats {
     pub avg_latency: Duration,
     pub p99_latency: Duration,
 }
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,13 +123,10 @@ mod tests {
     #[test]
     fn test_batcher_increases_on_low_latency() {
         let batcher = AdaptiveBatcher::new(64, 512, Duration::from_millis(100));
-        
-        // simulate low latency
+  
         for _ in 0..20 {
             batcher.record_latency(Duration::from_millis(10));
         }
-        
-        // wait for cooldown
         std::thread::sleep(Duration::from_secs(6));
         
         for _ in 0..20 {
