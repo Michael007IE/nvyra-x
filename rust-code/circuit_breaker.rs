@@ -1,21 +1,13 @@
-//! circuit breaker module
-//! 
-//! implements the circuit breaker pattern to prevent cascading failures
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use parking_lot::RwLock;
-
-/// circuit breaker states
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CircuitState {
     Closed,
     Open,
     HalfOpen,
 }
-
-
-/// circuit breaker implementation
 pub struct CircuitBreaker {
     state: RwLock<CircuitState>,
     failure_count: AtomicU32,
@@ -28,7 +20,6 @@ pub struct CircuitBreaker {
 }
 
 impl CircuitBreaker {
-    /// create new circuit breaker
     pub fn new(failure_threshold: u32, recovery_time: Duration) -> Self {
         Self {
             state: RwLock::new(CircuitState::Closed),
@@ -41,8 +32,6 @@ impl CircuitBreaker {
             half_open_calls: AtomicU32::new(0),
         }
     }
-    
-    /// check if circuit is closed (allowing requests)
     pub fn is_closed(&self) -> bool {
         let state = *self.state.read();
         
@@ -62,7 +51,6 @@ impl CircuitBreaker {
                 false
             }
             CircuitState::HalfOpen => {
-                // allow limited calls in half-open state
                 let calls = self.half_open_calls.fetch_add(1, Ordering::Relaxed);
                 calls < self.half_open_max_calls
             }
@@ -81,8 +69,6 @@ impl CircuitBreaker {
             }
             CircuitState::HalfOpen => {
                 self.success_count.fetch_add(1, Ordering::Relaxed);
-                
-                // if we've had enough successes, close the circuit
                 if self.success_count.load(Ordering::Relaxed) >= self.half_open_max_calls {
                     *state = CircuitState::Closed;
                     self.failure_count.store(0, Ordering::Relaxed);
@@ -91,7 +77,6 @@ impl CircuitBreaker {
                 }
             }
             CircuitState::Open => {
-                // shouldn't happen, but handle gracefully
             }
         }
     }
@@ -114,14 +99,12 @@ impl CircuitBreaker {
                 }
             }
             CircuitState::HalfOpen => {
-                // any failure in half-open state trips the circuit
                 *state = CircuitState::Open;
                 *self.last_failure.write() = Some(Instant::now());
                 self.success_count.store(0, Ordering::Relaxed);
                 tracing::warn!("circuit breaker: half-open -> open (failure during probe)");
             }
             CircuitState::Open => {
-                // already open, just update timestamp
                 *self.last_failure.write() = Some(Instant::now());
             }
         }
@@ -131,19 +114,15 @@ impl CircuitBreaker {
     pub fn recovery_time(&self) -> Duration {
         self.recovery_time
     }
-    
     /// get current state
     pub fn state(&self) -> CircuitState {
         *self.state.read()
     }
-    
     /// get current failure count
     pub fn failure_count(&self) -> u32 {
         self.failure_count.load(Ordering::Relaxed)
     }
 }
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
