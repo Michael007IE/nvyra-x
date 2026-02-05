@@ -1,7 +1,3 @@
-//! connection pool and http dispatcher module
-//! 
-//! manages persistent http/2 connections with pooling and retry logic
-
 use std::sync::Arc;
 use std::time::Duration;
 use anyhow::{Context, Result};
@@ -14,9 +10,6 @@ use hyper_util::client::legacy::{Client, connect::HttpConnector};
 use hyper_util::rt::TokioExecutor;
 use tokio::sync::Semaphore;
 use parking_lot::RwLock;
-
-
-/// connection pool for http/2 persistent connections
 pub struct ConnectionPool {
     client: Client<hyper_rustls::HttpsConnector<HttpConnector>, Full<Bytes>>,
     semaphore: Arc<Semaphore>,
@@ -25,7 +18,6 @@ pub struct ConnectionPool {
 }
 
 impl ConnectionPool {
-    /// create new connection pool
     pub fn new(max_connections: usize, timeout: Duration) -> Result<Self> {
         let https = HttpsConnectorBuilder::new()
             .with_webpki_roots()
@@ -50,8 +42,6 @@ impl ConnectionPool {
             max_connections,
         })
     }
-    
-    /// send post request with connection pooling
     pub async fn post(&self, url: &str, body: &[u8], timeout: Duration) -> Result<Bytes> {
         let _permit = self.semaphore.acquire().await
             .context("failed to acquire connection permit")?;
@@ -90,8 +80,6 @@ impl ConnectionPool {
         
         Ok(body)
     }
-    
-    /// send get request with connection pooling
     pub async fn get(&self, url: &str, timeout: Duration) -> Result<Bytes> {
         let _permit = self.semaphore.acquire().await
             .context("failed to acquire connection permit")?;
@@ -124,13 +112,9 @@ impl ConnectionPool {
         
         Ok(body)
     }
-    
-    /// get current number of available connections
     pub fn available_connections(&self) -> usize {
         self.semaphore.available_permits()
     }
-    
-    /// get maximum connections
     pub fn max_connections(&self) -> usize {
         self.max_connections
     }
