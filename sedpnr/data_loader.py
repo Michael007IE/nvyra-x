@@ -1,18 +1,12 @@
 # data_loader.py
 """
-SURVEY DATA → AGENT BEHAVIOR LOADER
-====================================
-Loads REAL survey responses and maps them to agent behavioral parameters.
-
-The survey contains 713 respondents who answered questions about:
+Survey Data - Agents
+Loads survey data and analyses it to create an "accurate repersentation" of what humans would actually think. The questions included:
 - Sharing behavior (instinctive vs. thoughtful)
 - Verification habits
 - Disinformation awareness
 - Big Five personality traits (openness, conscientiousness, etc.)
-
-This creates agents that behave like REAL PEOPLE based on their survey answers.
 """
-
 import pandas as pd
 import numpy as np
 import config as cfg
@@ -21,7 +15,6 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 import hashlib
 
-# Likert scale mapping (survey uses these exact strings)
 LIKERT_MAP = {
     'Strongly disagree': 0.0,
     'Disagree': 0.25,
@@ -37,20 +30,12 @@ def likert_to_float(value) -> float:
         return 0.5
     value_str = str(value).strip()
     return LIKERT_MAP.get(value_str, 0.5)
-
-
 @dataclass
 class RealHumanProfile:
-    """
-    A profile derived from ACTUAL survey responses.
-    Each profile represents a real person's attitudes and behaviors.
-    """
     # Identity
     agent_id: str
     age: str = "Unknown"
     gender: str = "Unknown"
-    
-    # Behavioral traits (from survey responses)
     share_instinct: float = 0.5      # "When I see news that angers me, I share it"
     share_frequency: float = 0.5     # "I frequently share articles"
     verification_habit: float = 0.5  # "I verify from multiple sources"
@@ -79,16 +64,10 @@ class RealHumanProfile:
     conformity: float = 0.5         # Follow rules
     universalism: float = 0.5       # Care for all
     security: float = 0.5           # Safe and stable life
-    
-    # Raw social media data
     social_platforms: str = ""
     follower_count: str = ""
     
     def get_susceptibility(self) -> float:
-        """
-        Calculate susceptibility to misinformation.
-        Higher = more likely to believe and share false info.
-        """
         return np.clip(
             0.25 * self.share_instinct +          # Shares impulsively
             0.20 * self.share_frequency +          # Shares often
@@ -98,7 +77,6 @@ class RealHumanProfile:
             0.10 * (1 - self.conscientiousness),   # Not careful
             0.0, 1.0
         )
-    
     def get_sharing_propensity(self) -> float:
         """How likely to share content (regardless of truth)."""
         return np.clip(
@@ -122,7 +100,6 @@ class RealHumanProfile:
     
     def get_influence_reach(self) -> float:
         """Estimated reach based on social media presence."""
-        # Parse follower count
         follower_str = str(self.follower_count).lower()
         if '10000' in follower_str or '10,000' in follower_str or 'more' in follower_str:
             return 0.9
@@ -156,12 +133,6 @@ class RealHumanProfile:
 
 
 def load_survey_data(filepath: str = None) -> List[RealHumanProfile]:
-    """
-    Load survey responses and create RealHumanProfile for each respondent.
-    
-    Returns:
-        List of RealHumanProfile objects representing real survey respondents.
-    """
     filepath = filepath or cfg.DATA_FILENAME
     
     if not os.path.exists(filepath):
@@ -171,8 +142,6 @@ def load_survey_data(filepath: str = None) -> List[RealHumanProfile]:
     print("LOADING REAL HUMAN SURVEY DATA")
     print(f"{'='*60}")
     print(f"Source: {filepath}")
-    
-    # Try different encodings
     for encoding in ['utf-8', 'latin-1', 'cp1252']:
         try:
             df = pd.read_csv(filepath, encoding=encoding)
@@ -181,24 +150,17 @@ def load_survey_data(filepath: str = None) -> List[RealHumanProfile]:
             continue
     else:
         raise ValueError("Could not decode CSV file")
-    
     print(f"Loaded {len(df)} survey responses")
     
     profiles = []
     
     for idx, row in df.iterrows():
-        # Create unique ID
         agent_id = f"agent_{idx:04d}"
-        
-        # Get column values by index (more reliable than column names with special chars)
         cols = df.columns.tolist()
-        
         profile = RealHumanProfile(
             agent_id=agent_id,
             age=str(row.iloc[4]) if len(cols) > 4 else "Unknown",
             gender=str(row.iloc[5]) if len(cols) > 5 else "Unknown",
-            
-            # Behavioral traits (columns 8-14)
             share_instinct=likert_to_float(row.iloc[8]) if len(cols) > 8 else 0.5,
             share_frequency=likert_to_float(row.iloc[9]) if len(cols) > 9 else 0.5,
             verification_habit=likert_to_float(row.iloc[10]) if len(cols) > 10 else 0.5,
@@ -206,8 +168,6 @@ def load_survey_data(filepath: str = None) -> List[RealHumanProfile]:
             influence_awareness=likert_to_float(row.iloc[12]) if len(cols) > 12 else 0.5,
             verification_ease=likert_to_float(row.iloc[13]) if len(cols) > 13 else 0.5,
             factcheck_belief=likert_to_float(row.iloc[14]) if len(cols) > 14 else 0.5,
-            
-            # Values (columns 15-24)
             hedonism=likert_to_float(row.iloc[15]) if len(cols) > 15 else 0.5,
             self_direction=likert_to_float(row.iloc[16]) if len(cols) > 16 else 0.5,
             achievement=likert_to_float(row.iloc[17]) if len(cols) > 17 else 0.5,
@@ -218,42 +178,32 @@ def load_survey_data(filepath: str = None) -> List[RealHumanProfile]:
             conformity=likert_to_float(row.iloc[22]) if len(cols) > 22 else 0.5,
             universalism=likert_to_float(row.iloc[23]) if len(cols) > 23 else 0.5,
             security=likert_to_float(row.iloc[24]) if len(cols) > 24 else 0.5,
-            
-            # Big Five (columns 25-29)
             openness=likert_to_float(row.iloc[25]) if len(cols) > 25 else 0.5,
             conscientiousness=likert_to_float(row.iloc[26]) if len(cols) > 26 else 0.5,
             agreeableness=likert_to_float(row.iloc[27]) if len(cols) > 27 else 0.5,
             extraversion=likert_to_float(row.iloc[28]) if len(cols) > 28 else 0.5,
             neuroticism=likert_to_float(row.iloc[29]) if len(cols) > 29 else 0.5,
-            
-            # Social media
             social_platforms=str(row.iloc[6]) if len(cols) > 6 else "",
             follower_count=str(row.iloc[7]) if len(cols) > 7 else "",
         )
         profiles.append(profile)
-    
-    # Compute population statistics
     susceptibilities = [p.get_susceptibility() for p in profiles]
     sharing = [p.get_sharing_propensity() for p in profiles]
     critical = [p.get_critical_thinking() for p in profiles]
     
-    print(f"\nPOPULATION ANALYSIS:")
+    print(f"\n Population Analysis")
     print(f"  Susceptibility - Mean: {np.mean(susceptibilities):.2f}, Std: {np.std(susceptibilities):.2f}")
     print(f"  Sharing Propensity - Mean: {np.mean(sharing):.2f}, Std: {np.std(sharing):.2f}")
     print(f"  Critical Thinking - Mean: {np.mean(critical):.2f}, Std: {np.std(critical):.2f}")
-    
-    # Find high-risk individuals
     high_susceptibility = [p for p in profiles if p.get_susceptibility() > 0.6]
     low_verification = [p for p in profiles if p.verification_habit < 0.4]
     
-    print(f"\nRISK INDICATORS:")
+    print(f"\n Risk Indicators ")
     print(f"  High susceptibility (>0.6): {len(high_susceptibility)} agents ({100*len(high_susceptibility)/len(profiles):.1f}%)")
     print(f"  Low verification habit (<0.4): {len(low_verification)} agents ({100*len(low_verification)/len(profiles):.1f}%)")
     print(f"{'='*60}\n")
     
     return profiles
-
-
 # For backward compatibility
 def get_virality_susceptibility(profile: RealHumanProfile) -> float:
     """Get susceptibility score for oracle."""
