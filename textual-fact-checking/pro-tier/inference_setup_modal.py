@@ -22,21 +22,13 @@ from dataclasses import dataclass, field
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
-
 APP_NAME = "nvyra-x-pro"
-
-# Model configuration - all real models
 orchestrator_model = "nvidia/Nemotron-Orchestrator-8B"
 factcheck_model = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8"
 disinfo_model = "Feargal/qwen2.5-fake-news-v1"
 reasoning_model = "nvidia/NVIDIA-Nemotron-Nano-12B-v2"
 dense_embed_model = "tencent/KaLM-Embedding-Gemma3-12B-2511"
 sparse_embed_model = "naver/splade-v3"
-
-# Hardcoded secrets (user uses multiple accounts)
 pro_secrets = [modal.Secret.from_dict({
     "hf_token": "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",
     "langsmith_api_key": "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",
@@ -58,16 +50,10 @@ pro_secrets = [modal.Secret.from_dict({
     "b2_bucket": "ai-text-cache",
 })]
 
-# Volumes for model caching
 hf_cache_vol = modal.Volume.from_name("huggingface-cache", create_if_missing=True)
-
-# Queue for background storage operations
 storage_queue = modal.Queue.from_name("nvyra-storage-queue", create_if_missing=True)
 
-
-# ============================================================================
-# INLINE METRICS
-# ============================================================================
+#  Metrics
 
 class InlineMetrics:
     """Simple metrics collection."""
@@ -87,12 +73,7 @@ class InlineMetrics:
         if key not in self.histograms:
             self.histograms[key] = []
         self.histograms[key].append(value)
-
-
-# ============================================================================
-# GPU IMAGE - CUDA 13.0, PyTorch 2.9.1, Flash Attention 3
-# ============================================================================
-
+        
 def download_all_models():
     """Download all models during image build with parallel fetching."""
     from huggingface_hub import snapshot_download
@@ -123,9 +104,7 @@ def download_all_models():
         executor.map(download_model, models)
 
     print("All models downloaded")
-
-
-# CUDA 13.0 + PyTorch 2.9.1 + Flash Attention 3 pre-built wheels
+    
 gpu_image = (
     modal.Image.from_registry("nvidia/cuda:13.0.0-cudnn-devel-ubuntu24.04", add_python="3.12")
     .apt_install("git", "wget", "libzstd-dev", "build-essential", "ninja-build", "ccache")
@@ -133,16 +112,12 @@ gpu_image = (
     .run_commands(
         "uv venv .venv",
         "uv pip install --system --upgrade setuptools pip",
-        # PyTorch 2.9.1 with CUDA 13.0
         "uv pip install --system 'torch==2.9.1' --index-url https://download.pytorch.org/whl/cu130",
-        # SGLang for ultra-fast inference (29% faster than vLLM)
         "uv pip install --system 'sglang[all]>=0.4.6' --no-build-isolation",
-        # Transformers and core deps
         "uv pip install --system 'transformers>=4.57.0' accelerate>=1.2.0 huggingface_hub hf_transfer",
         "uv pip install --system pydantic fastapi uvicorn aiohttp httpx",
         "uv pip install --system libsql-experimental qdrant-client boto3 zstandard",
         "uv pip install --system sentence-transformers",
-        # Flash Attention 3 pre-built wheels for CUDA 13.0 + PyTorch 2.9.1
         "pip install flash_attn_3 --find-links https://windreamer.github.io/flash-attention3-wheels/cu130_torch291 --extra-index-url https://download.pytorch.org/whl/cu130",
     )
     .env({
@@ -153,11 +128,6 @@ gpu_image = (
     })
     .run_function(download_all_models, secrets=pro_secrets, volumes={"/root/.cache/huggingface": hf_cache_vol})
 )
-
-
-# ============================================================================
-# REQUEST/RESPONSE MODELS
-# ============================================================================
 
 class VerificationRequest(BaseModel):
     claim: str = Field(..., description="The claim to verify")
@@ -185,11 +155,6 @@ class VerificationResult(BaseModel):
     cache_hit: bool = False
     route_taken: str = ""
 
-
-# ============================================================================
-# TAVILY KEY ROTATION
-# ============================================================================
-
 @dataclass
 class TavilyRotator:
     """Rotating API key manager for Tavily."""
@@ -203,14 +168,7 @@ class TavilyRotator:
         self.idx += 1
         return key
 
-
-# ============================================================================
-# MAIN INFERENCE ENGINE
-# ============================================================================
-
 app = modal.App(APP_NAME)
-
-
 @app.cls(
     image=gpu_image,
     gpu="H200",
@@ -254,13 +212,9 @@ class InferenceEngine:
         self.device = "cuda"
         self.dedup_cache = OrderedDict()
         self.dedup_limit = 50000
-
-        # CUDA optimizations for H200
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
         torch.set_float32_matmul_precision('high')
-
-        # Initialize Tavily key rotation
         tavily_keys = []
         for i in range(1, 10):
             key = os.environ.get(f"tavily_api_key_{i}")
@@ -268,11 +222,8 @@ class InferenceEngine:
                 tavily_keys.append(key)
         self.tavily = TavilyRotator(keys=tavily_keys)
         self.http_client = httpx.AsyncClient(timeout=30.0)
-
-        # Storage clients
         self.cctx = zstandard.ZstdCompressor(level=3)
         self.dctx = zstandard.ZstdDecompressor()
-
         self.s3 = boto3.client(
             's3',
             endpoint_url=os.environ["b2_endpoint"],
@@ -285,8 +236,6 @@ class InferenceEngine:
 
         self.qc = QdrantClient(url=os.environ["qdrant_url"])
         self.db = libsql.connect(database=os.environ["turso_url"], auth_token=os.environ["turso_api"])
-
-        # Load orchestrator with SGLang
         print(f"Loading Orchestrator: {orchestrator_model}")
         try:
             self.orchestrator_runtime = sgl.Runtime(
@@ -299,8 +248,6 @@ class InferenceEngine:
         except Exception as e:
             print(f"Orchestrator SGLang error: {e}")
             self.orchestrator_runtime = None
-
-        # Load factcheck model (main reasoning) with SGLang
         print(f"Loading Factcheck Model: {factcheck_model}")
         try:
             self.factcheck_runtime = sgl.Runtime(
@@ -314,8 +261,6 @@ class InferenceEngine:
         except Exception as e:
             print(f"Factcheck SGLang error: {e}")
             self.factcheck_runtime = None
-
-        # Load disinformation detection model
         print(f"Loading Disinfo Model: {disinfo_model}")
         try:
             self.disinfo_tokenizer = AutoTokenizer.from_pretrained(disinfo_model, trust_remote_code=True)
@@ -330,8 +275,6 @@ class InferenceEngine:
         except Exception as e:
             print(f"Disinfo model error: {e}")
             self.has_disinfo_model = False
-
-        # Load reasoning model
         print(f"Loading Reasoning Model: {reasoning_model}")
         try:
             self.reasoning_runtime = sgl.Runtime(
@@ -345,8 +288,6 @@ class InferenceEngine:
         except Exception as e:
             print(f"Reasoning model error: {e}")
             self.has_reasoning_model = False
-
-        # Load dense embedding model (KaLM-Embedding-Gemma3-12B - top MTEB)
         print(f"Loading Dense Embedding: {dense_embed_model}")
         try:
             self.dense_tokenizer = AutoTokenizer.from_pretrained(dense_embed_model, trust_remote_code=True)
@@ -360,8 +301,6 @@ class InferenceEngine:
         except Exception as e:
             print(f"Dense embedding error: {e}")
             self.dense_model = None
-
-        # Load sparse embedding model (SPLADE-v3)
         print(f"Loading Sparse Embedding: {sparse_embed_model}")
         try:
             self.sparse_tokenizer = AutoTokenizer.from_pretrained(sparse_embed_model, trust_remote_code=True)
@@ -478,11 +417,8 @@ class InferenceEngine:
                 ).to(self.device)
 
                 outputs = self.sparse_model(**inputs)
-                # SPLADE: log(1 + ReLU(logits)) aggregated over sequence
                 logits = outputs.logits
                 sparse_vec = torch.max(torch.log1p(torch.relu(logits)), dim=1)[0].squeeze()
-
-                # Convert to sparse dict (only non-zero values)
                 indices = sparse_vec.nonzero().squeeze(-1).cpu().tolist()
                 values = sparse_vec[indices].cpu().tolist()
 
@@ -536,8 +472,6 @@ class InferenceEngine:
                         vector=SparseVector(indices=sparse_indices, values=sparse_values)
                     )
                 )
-
-            # Use query_batch for hybrid search
             results = self.qc.search(
                 collection_name=self.qdrant_collection,
                 query_vector=("dense", dense_vec),
@@ -781,8 +715,7 @@ Respond with JSON:
                 cache_hit=True,
                 route_taken="memory_cache",
             )
-
-        # Step 1: Orchestrator routing
+            
         orchestrator_result = await self._run_orchestrator(request.claim)
         action = orchestrator_result.get("action", "full_pipeline")
         use_reasoning = orchestrator_result.get("use_reasoning_model", True)
@@ -807,7 +740,6 @@ Respond with JSON:
         sources_used = []
         cache_hit = False
 
-        # Step 2: Parallel execution - cache search + disinfo + embeddings
         parallel_tasks = {}
 
         if action in ["cache_search", "full_pipeline"]:
@@ -832,7 +764,6 @@ Respond with JSON:
             print(f"Parallel execution error: {e}")
             results = {}
 
-        # Process cache result
         cache_result = results.get("cache")
         if cache_result and cache_result.get("cache_hit"):
             cache_hit = True
@@ -849,8 +780,7 @@ Respond with JSON:
                     cache_hit=True,
                     route_taken="cache_hit",
                 )
-
-        # Step 3: Web search if needed (parallel queries)
+        
         if action in ["web_search", "full_pipeline"] and not cache_hit:
             queries = orchestrator_result.get("search_queries", [request.claim[:100]])[:2]
 
@@ -866,13 +796,10 @@ Respond with JSON:
                     evidence += f"\n\nSource: {url}\n{content[:3000]}"
                     sources_used.append(url)
 
-        # Step 4: Fact-check with evidence
         if evidence:
             factcheck_result = await self._run_factcheck(request.claim, evidence)
         else:
             factcheck_result = {"verdict": "unverifiable", "confidence": 0.3, "reasoning": "No evidence available"}
-
-        # Step 5: Combine with reasoning model (if enabled)
         disinfo_result = results.get("disinfo", {})
         embeddings = results.get("embeddings", (None, None))
         features = {"has_dense": embeddings[0] is not None, "has_sparse": embeddings[1] is not None}
@@ -921,11 +848,6 @@ Respond with JSON:
             route_taken=action,
         )
 
-
-# ============================================================================
-# WEB ENDPOINT
-# ============================================================================
-
 @app.function(image=modal.Image.debian_slim().pip_install("pydantic", "fastapi"))
 @modal.asgi_app()
 def web_app():
@@ -944,11 +866,6 @@ def web_app():
         return {"status": "healthy", "version": "1.0.0"}
 
     return api
-
-
-# ============================================================================
-# BACKGROUND STORAGE WORKER
-# ============================================================================
 
 @app.function(
     image=gpu_image,
@@ -1063,11 +980,6 @@ async def storage_worker():
         except Exception as e:
             print(f"Storage worker error: {e}")
             await asyncio.sleep(1)
-
-
-# ============================================================================
-# LOCAL ENTRYPOINT
-# ============================================================================
 
 @app.local_entrypoint()
 def main():
