@@ -225,13 +225,13 @@ Extract 3-5 factual claims from the article, then for each claim:
 2. Extract knowledge graph triplets as [Subject, Predicate, Object]
 
 **CRITICAL REQUIREMENTS**:
-✓ Output ONLY valid JSON - no extra text before or after
-✓ Extract FACTUAL claims, not opinions or commentary
-✓ HyDE docs must be search-optimized (include WHO, WHAT, WHEN, WHERE)
-✓ All triplets must have exactly 3 elements
-✓ Handle the complete article - don't skip important details
-✓ If an article is short, extract 3 claims minimum
-✓ If an article is long, extract up to 5 claims maximum
+Output ONLY valid JSON - no extra text before or after
+Extract FACTUAL claims, not opinions or commentary
+HyDE docs must be search-optimized (include WHO, WHAT, WHEN, WHERE)
+All triplets must have exactly 3 elements
+Handle the complete article - don't skip important details
+If an article is short, extract 3 claims minimum
+If an article is long, extract up to 5 claims maximum
 
 **EXAMPLE OUTPUT** (follow this EXACT structure):
 {{
@@ -588,7 +588,6 @@ def run_stage_1_ultra_reliable(input_csv: str, batch_size: int = 32):
     final_success_rate = (successful / total_processed * 100) if total_processed > 0 else 0
     avg_quality = (total_quality_score / successful) if successful > 0 else 0
 
-    print(f"\n{'='*70}")
     print(f" Stage 1 Complete ")
     print(f"   Successfully processed: {successful}")
     print(f"   Skipped: {skipped}")
