@@ -11,10 +11,10 @@
 # ------------------------------------------------------------------------------
 
 """
-nvyra-x cache builder - january 2026 production edition
+nvyra-x dataset building cache
 queue-based batch processing with 2000 item threshold
 cuda 13.0, pytorch 2.9.1, flash attention 3
-h200 gpu with hybrid dense+sparse embeddings
+H200 gpu with hybrid dense+sparse embeddings
 """
 
 import modal
@@ -30,22 +30,14 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor
 
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
-
 APP_NAME = "nvyra-x-cache-builder"
 QUEUE_THRESHOLD = 2000  # Only process when queue has 2000+ items
 BATCH_SIZE = 128  # Process in batches of 128
-
-# Model configuration
 factcheck_model = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8"
 dense_embed_model = "tencent/KaLM-Embedding-Gemma3-12B-2511"
 sparse_embed_model = "naver/splade-v3"
 reranker_lite = "Qwen/Qwen3-Reranker-0.6B"
 reranker_heavy = "Qwen/Qwen3-Reranker-8B"
-
-# Hardcoded secrets
 cache_secrets = [modal.Secret.from_dict({
     "hf_token": "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",
     "qdrant_url": "http://95.111.232.85:6333",
@@ -57,18 +49,11 @@ cache_secrets = [modal.Secret.from_dict({
     "b2_secret_key": "K0036GxH+hhmmADw9yh8aspgXhvu6fo",
     "b2_bucket": "ai-text-cache",
 })]
-
-# Volumes
 hf_cache_vol = modal.Volume.from_name("huggingface-cache", create_if_missing=True)
 data_vol = modal.Volume.from_name("rag-harvest-storage-prod", create_if_missing=True)
-
-# Queue for incoming items - this is the main ingestion point
 cache_build_queue = modal.Queue.from_name("nvyra-cache-build-queue", create_if_missing=True)
 
-
-# ============================================================================
-# METRICS
-# ============================================================================
+# Metrics
 
 @dataclass
 class PipelineMetrics:
@@ -96,11 +81,6 @@ class PipelineMetrics:
             },
             "errors": self.errors
         }))
-
-
-# ============================================================================
-# GPU IMAGE - CUDA 13.0, PyTorch 2.9.1, Flash Attention 3
-# ============================================================================
 
 def download_models():
     """Download all models during image build."""
@@ -140,18 +120,13 @@ gpu_image = (
     .run_commands(
         "uv venv .venv",
         "uv pip install --system --upgrade setuptools pip",
-        # PyTorch 2.9.1 with CUDA 13.0
         "uv pip install --system 'torch==2.9.1' --index-url https://download.pytorch.org/whl/cu130",
-        # SGLang for ultra-fast inference
         "uv pip install --system 'sglang[all]>=0.4.6' --no-build-isolation",
-        # vLLM for async inference
         "uv pip install --system 'vllm>=0.13.0' --no-build-isolation",
-        # Core dependencies
         "uv pip install --system 'transformers>=4.57.0' accelerate>=1.2.0 huggingface_hub hf_transfer",
         "uv pip install --system pydantic fastapi uvicorn aiohttp httpx",
         "uv pip install --system libsql-experimental qdrant-client boto3 zstandard",
         "uv pip install --system sentence-transformers polars pyarrow rank-bm25 datasketch",
-        # Flash Attention 3 pre-built wheels
         "pip install flash_attn_3 --find-links https://windreamer.github.io/flash-attention3-wheels/cu130_torch291 --extra-index-url https://download.pytorch.org/whl/cu130",
     )
     .env({
@@ -162,18 +137,7 @@ gpu_image = (
     })
     .run_function(download_models, secrets=cache_secrets, volumes={"/root/.cache/huggingface": hf_cache_vol})
 )
-
-
-# ============================================================================
-# MODAL APP
-# ============================================================================
-
 app = modal.App(APP_NAME)
-
-
-# ============================================================================
-# QUEUE ITEM SCHEMA
-# ============================================================================
 
 """
 Items pushed to the queue should be triple-quoted strings (JSON) with this schema:
@@ -191,11 +155,6 @@ Items pushed to the queue should be triple-quoted strings (JSON) with this schem
 }
 '''
 """
-
-
-# ============================================================================
-# GPU CACHE BUILDER
-# ============================================================================
 
 @app.cls(
     image=gpu_image,
@@ -340,7 +299,7 @@ class CacheBuilder:
             print(f"SGLang error: {e}, falling back to vLLM")
             self.factcheck_runtime = None
 
-        # Compile models for faster inference
+        # Compilation of Models
         self.model_lite = torch.compile(self.model_lite, mode="reduce-overhead")
         self.model_heavy = torch.compile(self.model_heavy, mode="reduce-overhead")
         self.model_dense = torch.compile(self.model_dense, mode="max-autotune-no-cudagraphs")
@@ -469,8 +428,7 @@ Then output a valid JSON with: synthesis, critique, verdict, falsity_score (0-9)
 
         try:
             raw = await asyncio.to_thread(run_generation)
-
-            # Parse JSON from response
+            
             json_match = re.search(r'</think>\s*(\{.*\})', raw, re.DOTALL)
             if not json_match:
                 json_match = re.search(r'(\{.*\})$', raw, re.DOTALL)
@@ -641,12 +599,6 @@ Then output a valid JSON with: synthesis, critique, verdict, falsity_score (0-9)
         self.metrics.report()
 
         return len(final_survivors)
-
-
-# ============================================================================
-# QUEUE MONITOR - Triggers processing when 2000+ items
-# ============================================================================
-
 @app.function(
     image=modal.Image.debian_slim(python_version="3.12").pip_install("pydantic"),
     schedule=modal.Period(minutes=1),  # Check every minute
@@ -664,8 +616,6 @@ async def queue_monitor():
         return {"status": "waiting", "queue_length": queue_len, "threshold": QUEUE_THRESHOLD}
 
     print(f"Threshold reached! Processing {queue_len} items...")
-
-    # Drain queue in batches
     all_items = []
     while len(all_items) < queue_len:
         try:
@@ -674,7 +624,6 @@ async def queue_monitor():
                 break
             for raw_item in batch:
                 try:
-                    # Parse triple-quoted JSON strings
                     if isinstance(raw_item, str):
                         item = json.loads(raw_item.strip("'\""))
                     else:
@@ -690,8 +639,6 @@ async def queue_monitor():
 
     if not all_items:
         return {"status": "empty", "queue_length": 0}
-
-    # Process in batches
     builder = CacheBuilder()
     total_processed = 0
 
@@ -709,11 +656,6 @@ async def queue_monitor():
         "items_drained": len(all_items),
         "items_processed": total_processed
     }
-
-
-# ============================================================================
-# MANUAL QUEUE PUSH ENDPOINT
-# ============================================================================
 
 @app.function(image=modal.Image.debian_slim().pip_install("pydantic", "fastapi"))
 @modal.asgi_app()
@@ -771,11 +713,6 @@ def queue_api():
         return {"status": "healthy", "version": "1.0.0"}
 
     return api
-
-
-# ============================================================================
-# LOCAL ENTRYPOINT
-# ============================================================================
 
 @app.local_entrypoint()
 def main(push_test: bool = False):
