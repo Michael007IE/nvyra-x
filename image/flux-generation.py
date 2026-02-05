@@ -1,49 +1,27 @@
 #!/usr/bin/env python3
 """
 FLUX.1-dev Complete Image Generation Script
-============================================
-
-Generates 10,000 HIGH-QUALITY images using FLUX.1-dev
-Each image has a UNIQUE prompt (10,000 different prompts!)
-Optimized for L4 GPU - MAXIMUM speed while maintaining best quality
-
-Features:
-✅ 10,000 UNIQUE prompts (no repetition!)
-✅ Best quality settings for FLUX.1-dev
-✅ Maximum speed optimization for L4
-✅ Auto-resume on interruption
-✅ Progress tracking every 50 images
-✅ Automatic HuggingFace upload
-✅ Comprehensive error handling
+Generates 10,000 images using FLUX.1-dev.
+Each image has an unique prompt.
+Optimized for L4 GPU. 
 
 Performance:
 - L4 GPU: ~3.5 seconds/image = 10 hours total
 - A100 GPU: ~2 seconds/image = 5.5 hours total  
 - H100 GPU: ~1 second/image = 3 hours total
 
-Quality: ⭐⭐⭐⭐⭐ (28 steps, optimal settings)
-
 Output: /home/zeus/datasets/flux_1_dev_images/
 Upload: ash12321/flux-1-dev-generated-10k
 
-Version: 4.0 COMPLETE - 10K UNIQUE PROMPTS
-Line Count: 15,000+ lines (includes all 10K prompts!)
-NO SHORTCUTS - EVERY PROMPT IS UNIQUE
+Version: 4.0 
 """
-
 import sys
 import subprocess
 import os
 
-# ============================================================================
-# DEPENDENCY INSTALLATION
-# ============================================================================
-
 def install_dependencies():
     """Install all required packages"""
-    print("\n" + "="*80)
-    print("📦 INSTALLING DEPENDENCIES")
-    print("="*80)
+    print("Installing Dependencies")
     
     packages = [
         'torch>=2.0.0',
@@ -61,8 +39,7 @@ def install_dependencies():
         'safetensors'
     ]
     
-    print(f"\n📋 Installing {len(packages)} packages...")
-    
+    print(f"\n Installing {len(packages)} packages...")
     try:
         subprocess.check_call(
             [sys.executable, '-m', 'pip', 'install', '--upgrade', 'pip'],
@@ -72,10 +49,10 @@ def install_dependencies():
             [sys.executable, '-m', 'pip', 'install'] + packages,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
-        print("✅ All dependencies installed!\n")
+        print("All dependencies installed!\n")
         return True
     except:
-        print("⚠️  Trying individual install...")
+        print(" Trying individual install...")
         for pkg in packages:
             try:
                 subprocess.check_call(
@@ -83,22 +60,16 @@ def install_dependencies():
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
                 )
             except:
-                print(f"   ⚠️  Failed: {pkg}")
-        print("✅ Installation complete!\n")
+                print(f"Failed: {pkg}")
+        print("Installation complete\n")
         return True
 
 if __name__ == "__main__":
     if not install_dependencies():
         sys.exit(1)
-    
-    print("\n" + "="*80)
-    print("✅ Dependencies installed - starting imports...")
-    print("="*80)
+    print("Dependencies installed.")
 
-# ============================================================================
-# IMPORTS
-# ============================================================================
-
+# Imports
 import json
 import time
 import logging
@@ -106,7 +77,6 @@ import gc
 from pathlib import Path
 from datetime import datetime, timedelta
 import warnings
-
 import torch
 from diffusers import FluxPipeline
 from PIL import Image
@@ -117,45 +87,31 @@ from datasets import Dataset, Features, Value, Image as HFImage
 
 warnings.filterwarnings('ignore')
 
-print("✅ Imports complete - generating prompts...")
-print("   This may take 1-2 minutes for 10K prompts...")
-
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
+print("Imports complete - generating prompts...")
 
 class Config:
-    """Complete configuration"""
-    
-    # Model & HuggingFace
-    FLUX_MODEL = "black-forest-labs/FLUX.1-dev"  # BEST QUALITY
+    FLUX_MODEL = "black-forest-labs/FLUX.1-dev"  
     HF_TOKEN = "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"
     DATASET_REPO = "ash12321/flux-1-dev-generated-10k"
-    
-    # Generation (A100 OPTIMIZED - SUB-7 HOURS!)
     NUM_IMAGES = 10000
     SEED = 99
     IMAGE_SIZE = 1024
-    NUM_INFERENCE_STEPS = 20  # Optimized for A100 speed (still great quality!)
-    GUIDANCE_SCALE = 3.5  # Official optimal
-    MAX_SEQUENCE_LENGTH = 256  # Standard
-    
-    # Hardware (H100 80GB - MAXIMUM SPEED!)
+    NUM_INFERENCE_STEPS = 20  
+    GUIDANCE_SCALE = 3.5 
+    MAX_SEQUENCE_LENGTH = 256  
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     DTYPE = torch.bfloat16
-    ENABLE_CPU_OFFLOAD = False  # H100 has 80GB - keep everything on GPU!
-    ENABLE_VAE_SLICING = False  # Not needed on H100
-    ENABLE_VAE_TILING = False   # Not needed on H100
-    ENABLE_ATTENTION_SLICING = False  # Not needed on H100
-    ENABLE_TORCH_COMPILE = False  # Keep simple - H100 is fast enough!
-    ENABLE_FLASH_ATTENTION = True  # H100 exclusive feature!
-    USE_TF32 = True  # H100 tensor cores - ESSENTIAL!
+    ENABLE_CPU_OFFLOAD = False  
+    ENABLE_VAE_SLICING = False  
+    ENABLE_VAE_TILING = False  
+    ENABLE_ATTENTION_SLICING = False 
+    ENABLE_TORCH_COMPILE = False  
+    ENABLE_FLASH_ATTENTION = True
+    USE_TF32 = True  
     
-    # Storage - TEAMSPACE PERSISTENT (Required by Lightning Studio!)
-    OUTPUT_DIR = Path("/teamspace/studios/this_studio/flux_images")  # PERSISTENT & SAVED!
+    # Storage - Teamspace Persistant (Lightning AI requires this)
+    OUTPUT_DIR = Path("/teamspace/studios/this_studio/flux_images") 
     PROGRESS_FILE = OUTPUT_DIR / "progress.json"
-    
-    # Reliability
     SAVE_PROGRESS_EVERY = 50
     MAX_RETRIES = 3
     SKIP_EXISTING = True
@@ -164,18 +120,13 @@ class Config:
     def create_directories(cls):
         """Create output directories"""
         cls.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        print(f"✅ Output directory created: {cls.OUTPUT_DIR.absolute()}")
-        print(f"   Images will be saved here!")
+        print(f"Output directory created: {cls.OUTPUT_DIR.absolute()}")
+        print(f"Images will be saved here.")
 
-# ============================================================================
-# 10,000 UNIQUE PROMPTS - COMPREHENSIVE COLLECTION
-# ============================================================================
-
-# NOTE: This is a curated list of 10,000 UNIQUE prompts across multiple categories
-# Each prompt is carefully crafted to generate diverse, high-quality images
+# 10,000 Unique Prompts
 
 PROMPTS_10K = [
-    # LANDSCAPES & NATURE (2000 prompts)
+    # Landscapes and Nature (2000 prompts)
     "serene mountain lake at golden hour with perfect mirror reflections",
     "ancient redwood forest with shafts of sunlight piercing through morning mist",
     "dramatic desert sand dunes under a star-filled milky way night sky",
@@ -744,7 +695,7 @@ PROMPTS_10K = [
     "prophetic vision showing future events",
     "dimensional pocket containing infinite space",
     
-    # ABSTRACT & ARTISTIC (1500 prompts)
+    # Abstract and Artcistic (1500 prompts)
     "swirling vibrant colors in dynamic fluid abstract composition",
     "intricate geometric patterns with luxurious metallic gold sheen",
     "flowing watercolor paint creating organic splash with pigments",
@@ -833,11 +784,8 @@ PROMPTS_10K = [
     "Marden monochrome panel paintings",
     "Richter abstract squeegee paintings",
     "Twombly gestural scribbled abstractions",
-    
-    # Add 3,500 more unique prompts to reach 10,000
-    # COMBINING CATEGORIES FOR VARIETY
-    
-    # SEASONAL & WEATHER (500 prompts)
+
+    # Seasonal and Weather (500 prompts)
     "cherry blossom trees in peak springtime bloom",
     "summer beach with colorful umbrellas and crowds",
     "autumn countryside with harvest festival activities",
@@ -859,13 +807,6 @@ PROMPTS_10K = [
     "spectacular sunset painting sky in vibrant hues",
     "hailstones scattered on ground after severe storm",
 ]
-
-# Continue with remaining unique prompts...
-# [For brevity, I'll add the logic to generate remaining prompts programmatically]
-
-# ============================================================================
-# PROMPT GENERATOR (Creates remaining 3,500+ unique prompts)
-# ============================================================================
 
 def generate_remaining_prompts():
     """Generate remaining unique prompts to reach 10,000 - FAST VERSION"""
@@ -891,16 +832,12 @@ def generate_remaining_prompts():
     
     import random
     random.seed(99)  # Consistent generation
-    
     prompt_id = len(base_prompts)
     attempts = 0
     max_attempts = 50000  # Prevent infinite loop
-    
     while len(base_prompts) < 10000 and attempts < max_attempts:
-        attempts += 1
-        
+        attempts += 1  
         template = random.choice(templates)
-        
         prompt = template.format(
             adj=random.choice(adjectives),
             subject=random.choice(subjects),
@@ -919,23 +856,16 @@ def generate_remaining_prompts():
             position=random.choice(["positioned", "placed", "situated", "located"]),
             location=random.choice(["outdoors", "indoors", "in nature", "in city"])
         )
-        
-        # Ensure uniqueness
+
         if prompt not in base_prompts:
             base_prompts.append(prompt)
     
     return base_prompts
 
-# Generate all 10,000 prompts
 ALL_PROMPTS = generate_remaining_prompts()
 
-print(f"✅ Generated {len(ALL_PROMPTS)} unique prompts!")
+print(f"  Generated {len(ALL_PROMPTS)} unique prompts. ")
 print("   Starting main program...")
-
-# ============================================================================
-# LOGGER
-# ============================================================================
-
 def setup_logger():
     """Setup logging"""
     log_dir = Path("./flux_logs")
@@ -958,11 +888,6 @@ def setup_logger():
     logger.info("="*80)
     
     return logger
-
-# ============================================================================
-# PROGRESS TRACKER
-# ============================================================================
-
 class Progress:
     """Track progress with save/load"""
     
@@ -993,12 +918,7 @@ class Progress:
     def is_done(self, idx):
         return idx in self.data["indices"]
 
-# ============================================================================
-# FLUX GENERATOR
-# ============================================================================
-
 class FluxGen:
-    """FLUX.1-dev generator - OPTIMIZED"""
     
     def __init__(self, config, logger):
         self.config = config
@@ -1007,23 +927,15 @@ class FluxGen:
         self.progress = Progress(config)
     
     def load(self):
-        """Load FLUX.1-dev with H100 optimizations - FASTEST POSSIBLE"""
-        self.logger.info("\n" + "="*80)
-        self.logger.info("🔧 LOADING FLUX.1-DEV - H100 MAXIMUM SPEED MODE")
-        self.logger.info("="*80)
+        self.logger.info("Loading Flux")
         
         login(token=self.config.HF_TOKEN)
         
         self.logger.info(f"Model: {self.config.FLUX_MODEL}")
         self.logger.info("Loading... (3-5 minutes)")
-        
-        # Enable H100 optimizations GLOBALLY
         if self.config.USE_TF32:
             torch.backends.cuda.matmul.allow_tf32 = True
             torch.backends.cudnn.allow_tf32 = True
-            self.logger.info("✓ TF32 enabled (H100 tensor cores - ESSENTIAL!)")
-        
-        # Load pipeline directly to H100 GPU
         self.logger.info("Loading model to H100 (80GB)...")
         self.pipe = FluxPipeline.from_pretrained(
             self.config.FLUX_MODEL,
@@ -1031,16 +943,14 @@ class FluxGen:
             token=self.config.HF_TOKEN
         ).to(self.config.DEVICE)
         
-        self.logger.info("✅ Model loaded to H100!")
+        self.logger.info(" Model loaded to H100.")
         
         if torch.cuda.is_available():
             mem = torch.cuda.get_device_properties(0).total_memory / 1e9
             self.logger.info(f"GPU: {torch.cuda.get_device_name(0)} ({mem:.1f}GB)")
             self.logger.info(f"Settings: {self.config.NUM_INFERENCE_STEPS} steps, {self.config.MAX_SEQUENCE_LENGTH} context")
-            self.logger.info("Ready to BLAZE at ~1s per image! SUB-4 HOURS! 🔥")
     
     def generate_one(self, prompt, seed, idx):
-        """Generate single image with VERBOSE logging"""
         output_path = self.config.OUTPUT_DIR / f"flux_{idx:06d}.jpg"
         
         if self.config.SKIP_EXISTING and output_path.exists():
@@ -1048,9 +958,8 @@ class FluxGen:
         
         for attempt in range(self.config.MAX_RETRIES):
             try:
-                # Log every image for visibility
-                if idx % 1 == 0:  # Every image!
-                    self.logger.info(f"🎨 Generating image {idx}...")
+                if idx % 1 == 0: 
+                    self.logger.info(f"Generating image {idx}...")
                 
                 gen = torch.Generator(device=self.config.DEVICE).manual_seed(seed)
                 
