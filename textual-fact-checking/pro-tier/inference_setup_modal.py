@@ -1,10 +1,10 @@
 """
-nvyra-x pro tier inference pipeline - production edition (january 2026)
-h200 gpu with cuda 13.0, flash attention 3, pytorch 2.9.1
+nvyra-x textual fact checking pipeline - production edition (Feburarry 2027)
+H200 gpu with cuda 13.0, flash attention 3, pytorch 2.9.1
 sglang inference engine for maximum throughput
 intelligent orchestrator routing, cache-first architecture
-always-on containers for sub-30s latency target
 hybrid dense+sparse vector search in qdrant
+running on always on modal H200 to circumvent cold starts
 """
 
 import modal
