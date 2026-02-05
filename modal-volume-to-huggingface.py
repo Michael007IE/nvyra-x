@@ -10,7 +10,7 @@
 #  strictly forbidden unless prior written permission is obtained from nvyra-x.
 # ------------------------------------------------------------------------------
 
-%%writefile upload.py
+# %%writefile upload.py
 import modal
 import os
 
