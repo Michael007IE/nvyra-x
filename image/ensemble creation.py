@@ -406,32 +406,32 @@ def main():
         confidence_threshold=0.7,  
         high_confidence_threshold=0.9  
     )   
-    print("\n  Detect single image from file:")
+    print("\n  1. Detect single image from file:")
     print("   ```python")
     print("   result = detector.detect(Image.open('image.jpg'))")
     print("   detector.print_result(result)")
     print("   ```")
     
-    print("\n Detect from URL:")
+    print("\n 2. Detect from URL:")
     print("   ```python")
     print("   result = detect_image_url('https://example.com/image.jpg')")
     print("   ```")
     
-    print("\n3️⃣  Batch detect folder:")
+    print("\n 3️. Batch detect folder:")
     print("   ```python")
     print("   results = batch_detect_folder('/path/to/images/')")
     print("   report = generate_report(list(results.values()))")
     print("   print_report(report)")
     print("   ```")
     
-    print("\n4️⃣  Get all model scores:")
+    print("\n 4. Get all model scores:")
     print("   ```python")
     print("   result = detector.detect(image, return_all_scores=True)")
     print("   for name, pred in result.all_predictions.items():")
     print("       print(f'{name}: {pred.confidence:.1%}')")
     print("   ```")
     
-    print("\n5️⃣  Adjust confidence threshold:")
+    print("\n 5. Adjust confidence threshold:")
     print("   ```python")
     print("   # More strict (fewer false positives)")
     print("   detector = EnsembleAIDetector(confidence_threshold=0.85)")
@@ -440,9 +440,7 @@ def main():
     print("   detector = EnsembleAIDetector(confidence_threshold=0.60)")
     print("   ```")
     
-    print("\n" + "="*100)
-    print("📝 API REFERENCE")
-    print("="*100)
+    print("API Reference")
     
     print("\nEnsembleResult fields:")
     print("   - is_ai_generated: bool")
@@ -459,21 +457,19 @@ def main():
     print("   - is_ai: bool")
     print("   - model_name: str")
     
-    print("\n" + "="*100)
-    print("✅ ENSEMBLE DETECTOR READY!")
-    print("="*100)
+    print("Ensembe Deepfake Detection System Ready")
     
-    print("\n🎯 Coverage:")
-    print("   ✅ FLUX 1.0 Dev (99.81% accuracy)")
-    print("   ✅ Stable Diffusion XL (99.81% accuracy)")
-    print("   ✅ Nano Banana Pro (95-97% accuracy)")
-    print("   ✅ SeeDream 4.5 (98.4% accuracy)")
-    print("   ✅ ImageGBT 1.5 (100% test accuracy)")
-    print("\n📊 Combined: ~80% of AI image generator market")
-    print("📈 Ensemble accuracy: Higher than any individual model")
-    print("⚡ Speed: ~50-100ms per image on GPU")
+    print("\n Coverage of market:")
+    print("FLUX 1.0 Dev (99.81% accuracy)")
+    print("Stable Diffusion XL (99.81% accuracy)")
+    print("Nano Banana Pro (95-97% accuracy)")
+    print("SeeDream 4.5 (98.4% accuracy)")
+    print("mageGBT 1.5 (100% test accuracy)")
+    print(" \n Combined: ~80% of AI image generator market")
+    print("Ensemble accuracy: Higher than any individual model")
+    print("Speed: ~50-100ms per image on GPU")
     
-    print("\n💡 Ready to detect AI images!")
+    print("\n Ready to detect AI images!")
 
 if __name__ == "__main__":
     main()
