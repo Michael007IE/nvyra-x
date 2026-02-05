@@ -14,16 +14,11 @@
 import modal
 import os
 
-# 1. Define the specific volume and secret
+
 vol = modal.Volume.from_name("reasoning-data")
 secret = modal.Secret.from_name("huggingface-secret")
-
-# 2. Define an image with the necessary library
 image = modal.Image.debian_slim().pip_install("huggingface_hub")
-
 app = modal.App("volume-exporter")
-
-# 3. Create a function to run the upload remotely
 @app.function(
     image=image,
     volumes={"/data": vol}, 
@@ -32,12 +27,8 @@ app = modal.App("volume-exporter")
 )
 def upload_to_huggingface(repo_id, repo_type="dataset"):
     from huggingface_hub import HfApi
-
     print(f"Preparing to upload '/data' to {repo_id}...")
-    
     api = HfApi()
-
-    # Create the Repositary if it dosen't exist yet
     print(f"Ensuring repository {repo_id} exists...")
     api.create_repo(
         repo_id=repo_id, 
@@ -45,10 +36,7 @@ def upload_to_huggingface(repo_id, repo_type="dataset"):
         exist_ok=True,    
         private=True     
     )
-    
-    # --- Upload ---
     print("Starting upload...")
-    # 'upload_folder' handles large files (LFS) automatically in newer versions
     api.upload_folder(
         folder_path="/data",
         repo_id=repo_id,
@@ -56,11 +44,9 @@ def upload_to_huggingface(repo_id, repo_type="dataset"):
         path_in_repo=".",
     )
     print("Upload complete!")
-
-# 4. Execute the function
 @app.local_entrypoint()
 def main():
     """Upload the reasoning data volume to Hugging Face."""
     upload_to_huggingface.remote(repo_id="Feargal/reasoning-data", repo_type="dataset")
 
-!modal run --detach upload.py
+# !modal run --detach upload.py
