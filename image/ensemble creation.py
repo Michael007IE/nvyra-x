@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 """
-ULTIMATE ENSEMBLE AI DETECTOR - 5 MODEL SYSTEM
-===============================================
 Combines 5 specialized detectors into a unified AI detection system.
 
 Models:
@@ -41,15 +39,9 @@ from huggingface_hub import hf_hub_download
 
 os.environ['HF_TOKEN'] = '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'
 
-print("="*100)
-print("🎯 ULTIMATE ENSEMBLE AI DETECTOR - 5 MODEL SYSTEM")
-print("="*100)
-print("\n📦 Loading comprehensive AI detection system...")
-print("   Covers: FLUX, SDXL, Nano, SeeDream, ImageGBT (~80% of market)\n")
-
-# ============================================================================
-# ENUMS AND DATA CLASSES
-# ============================================================================
+print("Custom Deepfake Detection Platform")
+print("\n Loading deefake detection system...")
+print(" Covers: FLUX, SDXL, Nano, SeeDream, ImageGBT (~80% of market)\n")
 
 class AIGenerator(Enum):
     """Supported AI generators"""
@@ -63,7 +55,6 @@ class AIGenerator(Enum):
 
 @dataclass
 class ModelPrediction:
-    """Individual model prediction"""
     generator: AIGenerator
     confidence: float
     is_ai: bool
@@ -71,22 +62,15 @@ class ModelPrediction:
 
 @dataclass
 class EnsembleResult:
-    """Final ensemble detection result"""
     is_ai_generated: bool
     generator: AIGenerator
     confidence: float
-    certainty_level: str  # "Very High", "High", "Medium", "Low"
+    certainty_level: str 
     all_predictions: Dict[str, ModelPrediction]
     reasoning: str
     detection_time: float
 
-# ============================================================================
-# MODEL ARCHITECTURES
-# ============================================================================
-
 class FluxSDXLDetector(nn.Module):
-    """ViT-Base detector for FLUX/SDXL (86M params)"""
-    
     def __init__(self):
         super().__init__()
         self.vit = ViTModel.from_pretrained("google/vit-base-patch16-224")
@@ -99,7 +83,6 @@ class FluxSDXLDetector(nn.Module):
             nn.Dropout(0.2),
             nn.Linear(192, 2)
         )
-    
     def forward(self, pixel_values):
         outputs = self.vit(pixel_values=pixel_values)
         pooled = outputs.pooler_output
@@ -107,8 +90,6 @@ class FluxSDXLDetector(nn.Module):
         return logits
 
 class SmallModelDetector(nn.Module):
-    """ViT-Small detector for Nano/SeeDream/ImageGBT (22M params)"""
-    
     def __init__(self):
         super().__init__()
         self.vit = ViTModel.from_pretrained("WinKawaks/vit-small-patch16-224")
@@ -127,29 +108,20 @@ class SmallModelDetector(nn.Module):
         pooled = outputs.pooler_output
         logits = self.classifier(pooled)
         return logits
-
-# ============================================================================
-# INDIVIDUAL DETECTOR WRAPPER
-# ============================================================================
-
+       
+# Specalised Detection Wrapper
 class SpecializedDetector:
-    """Wrapper for individual specialized detector"""
-    
     def __init__(self, generator: AIGenerator, model_class, 
                  repo_id: str, device: str = "cuda"):
         self.generator = generator
         self.device = device
-        
         print(f"   Loading {generator.value} detector...")
-        
-        # Download model from HuggingFace
         try:
             model_path = hf_hub_download(
                 repo_id=repo_id,
                 filename="pytorch_model.bin",
                 token=os.environ.get('HF_TOKEN')
             )
-            
             self.model = model_class()
             self.model.load_state_dict(torch.load(model_path, map_location=device))
             self.model.to(device)
@@ -161,25 +133,19 @@ class SpecializedDetector:
             else:
                 self.processor = ViTImageProcessor.from_pretrained("WinKawaks/vit-small-patch16-224")
             
-            print(f"      ✅ {generator.value} ready!")
+            print(f" Yes {generator.value} ready!")
             
         except Exception as e:
-            print(f"      ❌ Failed to load {generator.value}: {e}")
+            print(f" No, failed to load {generator.value}: {e}")
             raise
     
     def predict(self, image: Image.Image) -> ModelPrediction:
         """Predict if image is from this generator"""
-        
-        # Preprocess
         inputs = self.processor(images=image, return_tensors="pt")
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
-        
-        # Predict
         with torch.no_grad():
             logits = self.model(inputs['pixel_values'])
             probs = torch.nn.functional.softmax(logits, dim=1)
-            
-            # Class 1 = AI-generated from this generator
             confidence = probs[0][1].item()
             is_ai = confidence > 0.5
         
@@ -189,11 +155,6 @@ class SpecializedDetector:
             is_ai=is_ai,
             model_name=self.generator.value
         )
-
-# ============================================================================
-# ENSEMBLE DETECTOR SYSTEM
-# ============================================================================
-
 class EnsembleAIDetector:
     """Unified ensemble detector combining all 5 models"""
     
@@ -211,7 +172,7 @@ class EnsembleAIDetector:
         print(f"   High Confidence Threshold: {high_confidence_threshold:.0%}")
         
         # Load all 5 detectors
-        print(f"\n📥 Loading 5 specialized detectors:")
+        print(f"\n Loading 5 specialized detectors:")
         
         self.detectors = {
             'flux': SpecializedDetector(
@@ -246,8 +207,7 @@ class EnsembleAIDetector:
             ),
         }
         
-        print(f"\n✅ All 5 detectors loaded successfully!")
-        print(f"📊 System ready - Covers ~80% of AI image generators")
+        print(f"\n Models Loaded")
     
     def _get_certainty_level(self, confidence: float) -> str:
         """Map confidence to certainty level"""
@@ -273,12 +233,10 @@ class EnsembleAIDetector:
             else:
                 max_ai_conf = max(p.confidence for p in predictions.values())
                 return f"No detector strongly identified this as AI-generated. Max AI confidence: {max_ai_conf:.1%}. Likely real."
-        
         else:
             detecting_model = final_generator.value
             other_detections = [p.model_name for p in predictions.values() 
                                if p.is_ai and p.generator != final_generator]
-            
             if other_detections:
                 return f"{detecting_model} detector identified this with {final_confidence:.1%} confidence. Also flagged by: {', '.join(other_detections)}."
             else:
@@ -297,29 +255,18 @@ class EnsembleAIDetector:
         """
         
         start_time = time.time()
-        
-        # Get predictions from all models
         predictions = {}
         for name, detector in self.detectors.items():
             predictions[name] = detector.predict(image)
-        
-        # Find highest confidence prediction
         max_prediction = max(predictions.values(), key=lambda p: p.confidence)
-        
-        # Determine if AI-generated
         if max_prediction.confidence >= self.confidence_threshold:
-            # AI-generated
             is_ai = True
             generator = max_prediction.generator
             confidence = max_prediction.confidence
         else:
-            # Real image (no detector confident enough)
             is_ai = False
             generator = AIGenerator.REAL
-            # Confidence = how sure we are it's real (inverse of max AI confidence)
             confidence = 1.0 - max_prediction.confidence
-        
-        # Build result
         certainty_level = self._get_certainty_level(confidence)
         reasoning = self._build_reasoning(predictions, generator, confidence)
         detection_time = time.time() - start_time
@@ -341,32 +288,25 @@ class EnsembleAIDetector:
         """Detect multiple images"""
         
         results = []
-        
         for i, image in enumerate(images):
             if show_progress and (i + 1) % 10 == 0:
                 print(f"   Processed {i + 1}/{len(images)} images...")
-            
             result = self.detect(image)
             results.append(result)
-        
         return results
     
     def print_result(self, result: EnsembleResult):
-        """Pretty print detection result"""
-        
-        print("\n" + "="*80)
-        print("🔍 DETECTION RESULT")
-        print("="*80)
+        print("Detection Result")
         
         if result.is_ai_generated:
-            print(f"\n⚠️  VERDICT: AI-GENERATED IMAGE")
-            print(f"🤖 Generator: {result.generator.value}")
-            print(f"📊 Confidence: {result.confidence:.1%}")
-            print(f"🎯 Certainty: {result.certainty_level}")
+            print(f"\n This image appears to be generated by Artificial Intelligence (AI).")
+            print(f" Generator: {result.generator.value}")
+            print(f" Confidence: {result.confidence:.1%}")
+            print(f" Certainty: {result.certainty_level}")
         else:
-            print(f"\n✅ VERDICT: REAL IMAGE")
-            print(f"📊 Confidence: {result.confidence:.1%} (that it's real)")
-            print(f"🎯 Certainty: {result.certainty_level}")
+            print(f"\n This image appears to be real. ")
+            print(f" Confidence: {result.confidence:.1%} (that it's real)")
+            print(f" Certainty: {result.certainty_level}")
         
         print(f"\n💭 Reasoning: {result.reasoning}")
         print(f"⏱️  Detection Time: {result.detection_time*1000:.1f}ms")
@@ -374,55 +314,31 @@ class EnsembleAIDetector:
         if result.all_predictions:
             print(f"\n📋 Individual Model Scores:")
             for name, pred in result.all_predictions.items():
-                status = "✅" if pred.is_ai else "❌"
+                status = "yes" if pred.is_ai else "no"
                 print(f"   {status} {pred.model_name:20s}: {pred.confidence:.1%}")
-        
-        print("="*80)
-
-# ============================================================================
-# CONVENIENCE FUNCTIONS
-# ============================================================================
-
 def detect_image_file(image_path: str, detector: EnsembleAIDetector = None) -> EnsembleResult:
-    """Detect from image file path"""
-    
     if detector is None:
         detector = EnsembleAIDetector()
-    
     image = Image.open(image_path).convert('RGB')
     result = detector.detect(image, return_all_scores=True)
-    
     return result
-
 def detect_image_url(url: str, detector: EnsembleAIDetector = None) -> EnsembleResult:
-    """Detect from image URL"""
-    
     import requests
     from io import BytesIO
-    
     if detector is None:
         detector = EnsembleAIDetector()
-    
     response = requests.get(url)
     image = Image.open(BytesIO(response.content)).convert('RGB')
     result = detector.detect(image, return_all_scores=True)
-    
     return result
-
-def batch_detect_folder(folder_path: str, detector: EnsembleAIDetector = None) -> Dict:
-    """Detect all images in a folder"""
-    
+def batch_detect_folder(folder_path: str, detector: EnsembleAIDetector = None) -> Dict:    
     if detector is None:
         detector = EnsembleAIDetector()
-    
     folder = Path(folder_path)
     image_files = []
-    
     for ext in ['*.jpg', '*.jpeg', '*.png', '*.webp']:
         image_files.extend(folder.glob(ext))
-    
-    print(f"\n📁 Processing {len(image_files)} images from {folder_path}...")
-    
+    print(f"\n Processing {len(image_files)} images from {folder_path}...")
     results = {}
     
     for img_path in image_files:
@@ -431,29 +347,22 @@ def batch_detect_folder(folder_path: str, detector: EnsembleAIDetector = None) -
             result = detector.detect(image)
             results[img_path.name] = result
         except Exception as e:
-            print(f"   ❌ Failed to process {img_path.name}: {e}")
+            print(f" Failed to process {img_path.name}: {e}")
     
     return results
-
-# ============================================================================
-# STATISTICS AND REPORTING
-# ============================================================================
-
+   
+# Staistics and Reporting
 def generate_report(results: List[EnsembleResult]) -> Dict:
     """Generate statistics report from batch results"""
     
     total = len(results)
     ai_generated = sum(1 for r in results if r.is_ai_generated)
     real_images = total - ai_generated
-    
-    # Count by generator
     generator_counts = {}
     for result in results:
         if result.is_ai_generated:
             gen = result.generator.value
             generator_counts[gen] = generator_counts.get(gen, 0) + 1
-    
-    # Confidence distribution
     avg_confidence = sum(r.confidence for r in results) / total if total > 0 else 0
     high_confidence = sum(1 for r in results if r.confidence >= 0.9)
     
@@ -471,59 +380,39 @@ def generate_report(results: List[EnsembleResult]) -> Dict:
     return report
 
 def print_report(report: Dict):
-    """Pretty print statistics report"""
+    print(" Detection Report")
     
-    print("\n" + "="*80)
-    print("📊 DETECTION REPORT")
-    print("="*80)
-    
-    print(f"\n📈 Summary:")
-    print(f"   Total Images: {report['total_images']}")
-    print(f"   AI-Generated: {report['ai_generated']} ({report['ai_percentage']:.1f}%)")
-    print(f"   Real Images:  {report['real_images']} ({100-report['ai_percentage']:.1f}%)")
+    print(f"\n Summary:")
+    print(f"  Total Images: {report['total_images']}")
+    print(f"  AI-Generated: {report['ai_generated']} ({report['ai_percentage']:.1f}%)")
+    print(f"  Real Images:  {report['real_images']} ({100-report['ai_percentage']:.1f}%)")
     
     if report['generator_breakdown']:
-        print(f"\n🤖 AI Generator Breakdown:")
+        print(f"\n AI Generator Breakdown:")
         for gen, count in sorted(report['generator_breakdown'].items(), key=lambda x: x[1], reverse=True):
             print(f"   {gen:20s}: {count:3d} images")
     
-    print(f"\n📊 Confidence:")
+    print(f"\n Confidence:")
     print(f"   Average: {report['average_confidence']:.1%}")
     print(f"   High Confidence (>90%): {report['high_confidence_detections']}")
-    
-    print(f"\n⏱️  Performance:")
+    print(f"\n Performance:")
     print(f"   Avg Detection Time: {report['avg_detection_time_ms']:.1f}ms per image")
-    
-    print("="*80)
 
-# ============================================================================
-# EXAMPLE USAGE
-# ============================================================================
+# Basic Testing
 
 def main():
-    """Example usage of the ensemble detector"""
-    
-    print("\n" + "="*100)
-    print("🎯 ENSEMBLE DETECTOR - EXAMPLE USAGE")
-    print("="*100)
-    
-    # Initialize detector (loads all 5 models)
+   print("Example Usage:")
     detector = EnsembleAIDetector(
-        confidence_threshold=0.7,  # Threshold for AI detection
-        high_confidence_threshold=0.9  # Threshold for "very high" certainty
-    )
-    
-    print("\n" + "="*100)
-    print("💡 USAGE EXAMPLES")
-    print("="*100)
-    
-    print("\n1️⃣  Detect single image from file:")
+        confidence_threshold=0.7,  
+        high_confidence_threshold=0.9  
+    )   
+    print("\n  Detect single image from file:")
     print("   ```python")
     print("   result = detector.detect(Image.open('image.jpg'))")
     print("   detector.print_result(result)")
     print("   ```")
     
-    print("\n2️⃣  Detect from URL:")
+    print("\n Detect from URL:")
     print("   ```python")
     print("   result = detect_image_url('https://example.com/image.jpg')")
     print("   ```")
