@@ -1,17 +1,6 @@
 # agents.py
 """
-COGNITIVE DIGITAL TWINS - HUMAN-LIKE AGENT ARCHITECTURE
-========================================================
-These aren't simple probability machines - they're cognitive simulations
-of real human decision-making, complete with:
-
-- Emotional states that fluctuate based on content and context
-- Theory of Mind (estimating what neighbors will think)
-- Confirmation bias and motivated reasoning
-- Social reputation management
-- Memory and belief updating
-
-Each agent is a "digital twin" of a real psychological profile.
+Human Like Behavior Influenced from custom Survey of 712 + people
 """
 
 from mesa import Agent
@@ -34,36 +23,25 @@ class EmotionalState(Enum):
     SKEPTICAL = "skeptical"
     TRUSTING = "trusting"
 
-
 @dataclass
 class CognitiveState:
-    """
-    🧠 THE INNER MIND
-    
-    Tracks the dynamic psychological state of an agent.
-    These values change based on what the agent experiences.
-    """
     # Core emotions (0-1 intensity)
     fear: float = 0.2
     uncertainty: float = 0.5
     trust: float = 0.5
     anger: float = 0.1
-    
     # Cognitive load
     attention_remaining: float = 1.0  # Depletes with exposure
     processing_depth: float = 0.5     # How carefully analyzing
-    
     # Social state
     perceived_reputation: float = 0.5  # How I think others see me
     social_pressure: float = 0.0       # Pressure from neighbors
-    
     # Memory
     exposures_today: int = 0
     shares_today: int = 0
     debunks_heard: int = 0
     
     def get_emotional_state(self) -> EmotionalState:
-        """Determine dominant emotional state."""
         if self.fear > 0.7:
             return EmotionalState.FEARFUL
         elif self.anger > 0.6:
@@ -80,22 +58,16 @@ class CognitiveState:
             return EmotionalState.CALM
     
     def decay_attention(self, amount: float = 0.05):
-        """Attention depletes with each exposure."""
         self.attention_remaining = max(0.1, self.attention_remaining - amount)
     
     def reset_daily(self):
-        """Reset daily counters (if simulating multiple days)."""
         self.exposures_today = 0
         self.shares_today = 0
         self.attention_remaining = min(1.0, self.attention_remaining + 0.3)
 
-
 class FractalConsumer(Agent):
     """
-    🧬 COGNITIVE DIGITAL TWIN
-    
-    A human-like agent with rich psychological modeling.
-    
+    SEDPNR Model 
     States: S (Susceptible), E (Exposed), D (Deciding), 
             P (Procrastinating/Spreader), N (Neutral), R (Recovered)
     
@@ -108,21 +80,9 @@ class FractalConsumer(Agent):
     """
     
     def __init__(self, node_id, model, profile):
-        """
-        Initialize with a CognitiveProfile from data_loader.
-        
-        Args:
-            node_id: Network node ID for this agent
-            model: Parent model reference
-            profile: CognitiveProfile or dict with personality traits
-        """
         super().__init__(model)
-        self.node_id = node_id  # Store for network operations
-        
-        # Store full profile
+        self.node_id = node_id 
         self.profile = profile
-        
-        # Extract personality traits (support both CognitiveProfile and dict)
         if hasattr(profile, 'openness'):
             self.traits = {
                 'openness': profile.openness,
@@ -142,7 +102,6 @@ class FractalConsumer(Agent):
                 'reputation_concern': getattr(profile, 'reputation_concern', 0.5),
             }
         else:
-            # Legacy dict format
             self.traits = {
                 'openness': profile.get('openness', 0.5),
                 'conscientiousness': profile.get('conscientiousness', 0.5),
@@ -160,23 +119,15 @@ class FractalConsumer(Agent):
                 'confirmation_bias': profile.get('confirmation_bias', 0.5),
                 'reputation_concern': profile.get('reputation_concern', 0.5),
             }
-        
-        # Initialize state machine
         self.state = "S"
         self.time_in_state = 0
-        self.belief = cfg.PRIOR_TRUTH_PROB  # Prior belief content is true
-        
-        # Initialize cognitive state
+        self.belief = cfg.PRIOR_TRUTH_PROB
         self.cognitive_state = CognitiveState(
             trust=self.traits['trust_baseline'],
             uncertainty=0.5,
             fear=self.traits['fear_sensitivity'] * 0.3,
         )
-        
-        # Calculate personalized parameters
         self._calculate_personal_parameters()
-        
-        # Decision history (for theory of mind)
         self.recent_decisions: List[str] = []
         self.last_share_step: int = -100
         
@@ -206,10 +157,8 @@ class FractalConsumer(Agent):
     def step(self):
         """Main agent step - cognitive state machine."""
         self.time_in_state += 1
-        
         # Update emotional state based on environment
         self._update_emotional_state()
-        
         # State machine transitions
         if self.state == "S":
             self._step_susceptible()
@@ -259,8 +208,7 @@ class FractalConsumer(Agent):
     
     def _step_susceptible(self):
         """
-        SUSCEPTIBLE STATE
-        
+        Susceptible State
         Agent is unaware of the misinformation.
         Transition to Exposed based on:
         - Neighbor infection pressure
@@ -270,18 +218,15 @@ class FractalConsumer(Agent):
         neighbors = self.model.grid.get_neighbors(self.pos, include_center=False)
         if not neighbors:
             return
-        
         # Calculate infection pressure from spreader neighbors
         infected_neighbors = [n for n in neighbors 
                              if isinstance(n, FractalConsumer) and n.state == "P"]
         base_force = len(infected_neighbors) / len(neighbors)
-        
         # Boost from disinformant broadcast
         if self.model.disinformant.last_action == "share":
             # Disinformant's reputation affects persuasiveness
             disinfo_effect = 0.15 * self.model.disinformant.reputation
             base_force += disinfo_effect
-        
         # Personal susceptibility modifier
         personal_susceptibility = (
             0.4 * self.traits['influence_susceptibility'] +
@@ -289,21 +234,16 @@ class FractalConsumer(Agent):
             0.2 * self.cognitive_state.social_pressure +
             0.1 * (1 - self.traits['critical_thinking'])
         )
-        
         # Fractional probability (memory effect - longer exposure = higher chance)
         prob = math_engine.fractional_probability(self.beta, self.time_in_state)
-        
         # Combined probability
         infection_prob = base_force * prob * (0.5 + 0.5 * personal_susceptibility)
-        
         if self.random.random() < infection_prob:
             self._transition_to("E")
             self.cognitive_state.exposures_today += 1
-    
     def _step_exposed(self):
         """
-        EXPOSED STATE
-        
+        Exposed State
         Agent has seen the content but hasn't decided yet.
         Bayesian belief updating + emotional processing.
         """
@@ -346,8 +286,7 @@ class FractalConsumer(Agent):
     
     def _step_deciding(self):
         """
-        DECIDING STATE
-        
+        Deciding 
         Agent is actively deciding what to do.
         Uses Theory of Mind and reputation considerations.
         """
@@ -389,9 +328,8 @@ class FractalConsumer(Agent):
     
     def _step_spreading(self):
         """
-        SPREADING (Procrastinating) STATE
-        
-        Agent is actively spreading misinformation.
+        Spreading
+        Agent is actively spreading disinformation.
         Can recover through fact-checking or natural decay.
         """
         # Check for exposure to debunking
@@ -433,8 +371,7 @@ class FractalConsumer(Agent):
     
     def _step_neutral(self):
         """
-        NEUTRAL STATE
-        
+        Neutral
         Agent is disengaged but could be re-exposed.
         Slight chance of returning to susceptible or moving to recovered.
         """
@@ -455,16 +392,13 @@ class FractalConsumer(Agent):
     
     def _theory_of_mind_check(self) -> float:
         """
-        🧠 THEORY OF MIND
-        
+        Theory of Mind 
         Agent estimates what neighbors will think if they share.
         Returns a modifier to the decision threshold.
         """
         neighbors = self.model.grid.get_neighbors(self.pos, include_center=False)
         if not neighbors:
             return 0.0
-        
-        # Estimate neighbor skepticism
         recovered_count = 0
         skeptical_count = 0
         
@@ -474,39 +408,21 @@ class FractalConsumer(Agent):
                     recovered_count += 1
                 elif n.state == "S" and n.traits.get('critical_thinking', 0.5) > 0.6:
                     skeptical_count += 1
-        
-        # If many neighbors are recovered/skeptical, sharing seems risky
         social_risk = (recovered_count + skeptical_count * 0.5) / len(neighbors)
-        
-        # Reputation-conscious agents care more about this
         tom_effect = social_risk * self.traits['reputation_concern'] * 0.2
         
-        return tom_effect  # Makes it harder to become a spreader
+        return tom_effect 
     
     def _transition_to(self, new_state: str):
         """Helper to transition states cleanly."""
         self.state = new_state
         self.time_in_state = 0
 
-
-# === STRATEGIC AGENTS ===
-
 class DisinformantAgent(Agent):
-    """
-    👿 THE ADVERSARY
-    
-    A strategic agent that spreads misinformation.
-    Uses game theory to optimize spread vs. risk of detection.
-    
-    Enhanced with:
-    - Adaptive strategy based on platform behavior
-    - Timing optimization (strike when defenses are low)
-    - Reputation management (builds credibility before attacking)
-    """
     
     def __init__(self, model):
         super().__init__(model)
-        self.reputation = 0.5  # Public perception
+        self.reputation = 0.5  
         self.last_action = "hold"
         
         # Strategic memory
@@ -580,85 +496,41 @@ class DisinformantAgent(Agent):
 
 
 class FactCheckerAgent(Agent):
-    """
-    ✅ THE DEFENDER
-    
-    A fact-checking agent that combats misinformation.
-    
-    Enhanced with:
-    - Resource management (can't debunk everything)
-    - Prioritization based on spread velocity
-    - Reputation-aware credibility building
-    - Coordination with platform
-    """
-    
     def __init__(self, model):
         super().__init__(model)
-        self.reputation = 0.5  # Public trust in fact-checker
+        self.reputation = 0.5  
         self.last_action = "wait"
-        
-        # Resources
-        self.energy = 1.0  # Depletes when debunking
+        self.energy = 1.0  
         self.debunks_today = 0
         self.successful_corrections = 0
         
     def step(self):
-        """Decide whether to debunk this step."""
         p_count = self.model.get_state_count("P")
         total = self.model.num_agents
         infection_rate = p_count / total
-        
-        # Recover energy when not acting
         if self.last_action == "wait":
             self.energy = min(1.0, self.energy + 0.1)
-        
-        # Calculate urgency
         urgency = 0.0
-        
-        # Base urgency from infection rate
         if infection_rate > 0.05:
             urgency += (infection_rate - 0.05) * 5
-        
-        # Boost if disinformant was active
         if self.model.disinformant.last_action == "share":
             urgency += 0.3
-        
-        # Boost if platform requests help (high moderation = coordination)
         urgency += 0.2 * self.model.platform.moderation_level
-        
-        # Check if we have resources and urgency justifies action
         if urgency > 0.3 and self.energy > 0.2:
             self.last_action = "debunk"
             self.energy -= 0.15
             self.debunks_today += 1
-            
-            # Reputation grows with activity (within reason)
             if self.debunks_today < 5:
                 self.reputation = min(1.0, self.reputation + 0.03)
             else:
-                # Over-debunking can seem spammy
                 self.reputation = max(0.1, self.reputation - 0.01)
         else:
             self.last_action = "wait"
-            # Slight reputation decay from inactivity during crisis
             if infection_rate > 0.2:
                 self.reputation = max(0.1, self.reputation - 0.02)
 
 
-class PlatformAgent(Agent):
-    """
-    📡 THE REGULATOR
-    
-    The platform mediating between all parties.
-    Optimizes engagement while minimizing harm.
-    
-    Enhanced with:
-    - Multi-objective optimization
-    - Predictive moderation (works with Virality Oracle if available)
-    - Dynamic policy adjustment
-    - User trust tracking
-    """
-    
+class PlatformAgent(Agent):    
     def __init__(self, model):
         super().__init__(model)
         self.moderation_level = 0.5  # 0 = Lenient, 1 = Strict
@@ -709,30 +581,18 @@ class PlatformAgent(Agent):
             max(0.0, self.moderation_level - step_size),
             projected_misinfo_down
         )
-        
-        # Consider virality oracle if available
         oracle_boost = 0.0
         if self.virality_oracle:
-            # Oracle predicts threats - adjust accordingly
-            # (Integration point with virality_oracle.py)
             pass
-        
-        # Make decision
         if util_up > curr_util + oracle_boost and util_up > util_down:
             self.moderation_level = min(1.0, self.moderation_level + step_size)
         elif util_down > curr_util + oracle_boost:
             self.moderation_level = max(0.0, self.moderation_level - step_size)
-        
-        # Update user trust based on outcomes
         infection_rate = misinfo / max(1, self.model.num_agents)
         if infection_rate > 0.3:
-            # Users losing trust due to misinfo spread
             self.user_trust = max(0.2, self.user_trust - 0.02)
         elif infection_rate < 0.1 and self.moderation_level < 0.7:
-            # Good balance - users happy
             self.user_trust = min(1.0, self.user_trust + 0.01)
-        
-        # Adjust policy mode based on conditions
         if infection_rate > 0.25:
             self.policy_mode = "safety"
         elif engagement < self.model.num_agents * 0.3:
@@ -741,16 +601,10 @@ class PlatformAgent(Agent):
             self.policy_mode = "balanced"
     
     def trigger_defense_protocol(self, content_id: str, v_score: float):
-        """
-        🚨 EMERGENCY DEFENSE PROTOCOL
-        
-        Called by the Virality Oracle when a critical threat is detected.
-        """
         if v_score > 0.85:
-            # Critical threat - maximum response
             self.moderation_level = min(1.0, self.moderation_level + 0.2)
             
-            # Route to external fact-checkers
+            # Route to external fact-checkers (not fully implemented yet - still in beta)
             if self.fact_check_router:
                 self.fact_check_router.route_to_factchecker(
                     content_id=content_id,
