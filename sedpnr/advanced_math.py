@@ -1,27 +1,19 @@
 # advanced_math.py
 """
-🧮 ADVANCED MATHEMATICAL ENGINE
-================================
-Core mathematical functions powering the neuro-symbolic simulation.
+Custom Advanced Mathematical Simulation based on SEDPNR Model
 
-Includes:
-- Fractional calculus (memory-based probability decay)
-- Bayesian belief updating (rational agents)
-- Game theory utility functions (strategic agents)
-- Spectral analysis utilities (network effects)
-- Cognitive science models (human decision-making)
+Govindankutty, Sreeraag & P G, Shynu. (2024). Epidemic modeling for misinformation spread in digital networks through a social intelligence approach. 
+Scientific Reports. 14. 10.1038/s41598-024-69657-0. 
+
+Fractional Calculus
+Bayesian Belief Updates
+Game Theory Utility Functions
+Cognitive Science elements for Human Decision Making
 """
-
 import numpy as np
 from scipy.special import gamma as gamma_func
 from typing import Tuple, List, Optional
 import config as cfg
-
-
-# =============================================================================
-# 🧠 FRACTIONAL CALCULUS (Memory Dynamics)
-# =============================================================================
-
 def fractional_probability(base_rate: float, time_in_state: int, v: float = None) -> float:
     """
     Implements fractional dynamics with memory effects.
@@ -119,11 +111,7 @@ def caputo_derivative(f_values: List[float], dt: float = 1.0, alpha: float = Non
     coefficient = dt ** (-alpha) / gamma_func(2 - alpha)
     return coefficient * derivative
 
-
-# =============================================================================
-# 📊 BAYESIAN INFERENCE (Belief Updating)
-# =============================================================================
-
+# Bayesian Inference
 def bayesian_belief_update(
     prior: float,
     signal_is_share: bool,
@@ -210,10 +198,7 @@ def confirmation_bias_update(
     
     return np.clip(biased_update, 0.0, 1.0)
 
-
-# =============================================================================
-# 🎮 GAME THEORY UTILITIES
-# =============================================================================
+# Game Theory Adversarial Layer
 
 def platform_utility(
     engagement: float,
@@ -317,10 +302,7 @@ def nash_bargaining_solution(
     
     return best_idx
 
-
-# =============================================================================
-# 🌐 NETWORK ANALYSIS
-# =============================================================================
+# Network Analysis
 
 def calculate_spectral_radius(adjacency_matrix: np.ndarray) -> float:
     """
@@ -339,7 +321,6 @@ def calculate_spectral_radius(adjacency_matrix: np.ndarray) -> float:
     eigenvalues = np.linalg.eigvalsh(adjacency_matrix)
     return max(abs(eigenvalues))
 
-
 def calculate_algebraic_connectivity(laplacian: np.ndarray) -> float:
     """
     Calculate algebraic connectivity (Fiedler value) of the network.
@@ -355,11 +336,8 @@ def calculate_algebraic_connectivity(laplacian: np.ndarray) -> float:
     """
     eigenvalues = sorted(np.linalg.eigvalsh(laplacian))
     return eigenvalues[1] if len(eigenvalues) > 1 else 0.0
-
-
-# =============================================================================
-# 🧪 COGNITIVE SCIENCE MODELS
-# =============================================================================
+    
+# Cognitive Science Modules
 
 def prospect_theory_weight(probability: float, gamma: float = 0.7) -> float:
     """
@@ -408,13 +386,10 @@ def social_proof_effect(
         return own_belief
     
     group_mean = np.mean(neighbor_beliefs)
-    
     # Weighted average between own belief and group
     adjusted = (1 - conformity) * own_belief + conformity * group_mean
-    
     return np.clip(adjusted, 0.0, 1.0)
-
-
+    
 def emotional_amplification(
     base_probability: float,
     emotional_intensity: float,
@@ -422,9 +397,7 @@ def emotional_amplification(
 ) -> float:
     """
     Model how emotions amplify or dampen decision probabilities.
-    
     Fear accelerates action, calm slows it.
-    
     Args:
         base_probability: Base action probability
         emotional_intensity: Intensity of emotion (0-1)
@@ -443,8 +416,6 @@ def emotional_amplification(
     
     multiplier = multipliers.get(emotion_type, 1.0)
     return np.clip(base_probability * multiplier, 0.0, 1.0)
-
-
 def decision_fatigue(
     base_quality: float,
     decisions_made: int,
@@ -452,14 +423,11 @@ def decision_fatigue(
 ) -> float:
     """
     Model decision fatigue - quality decreases with more decisions.
-    
     After many decisions, agents make poorer choices.
-    
     Args:
         base_quality: Base decision quality (0-1)
         decisions_made: Number of decisions already made
         max_capacity: Mental capacity before significant degradation
-    
     Returns:
         Degraded decision quality
     """
