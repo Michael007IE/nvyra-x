@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """
-RETRAIN NANO DETECTOR - FIX HIGH FPR ISSUE
-==========================================
 Retrains Nano Banana Pro detector with more diverse real images to fix 47% FPR.
 
-PROBLEM: Original Nano had 47% FPR on cars/photos (overfitted to artistic images)
-SOLUTION: Add more diverse real images (cars, photos, objects, scenes)
+Problem: Original Nano had 47% FPR on cars/photos (overfitted to artistic images)
+Solition:  Add more diverse real images (cars, photos, objects, scenes)
 
 New real image distribution:
 - 20 Cars (photographic)
@@ -15,7 +13,7 @@ New real image distribution:
 - 10 Portraits (photographic)
 - 10 Pokemon (sprites)
 
-Total: 100 real images (vs 50 before) - DOUBLED!
+Total: 100 real images 
 Focus: More photographic variety to reduce FPR
 
 Version: 2.0 - Nano Fix
@@ -35,20 +33,18 @@ import gc
 import warnings
 warnings.filterwarnings('ignore')
 
-print("="*100)
-print("🔧 NANO DETECTOR RETRAINING - FIX HIGH FPR")
-print("="*100)
-print("\n🎯 Goal: Reduce FPR from 47% to <10%")
-print("\n📊 Strategy:")
-print("   1. DOUBLE real images (50 → 100)")
+print("Neno Detector Pro Retraining")
+print("\n Goal: Reduce FPR from 47% to <10%")
+print("\n Strategy:")
+print("   1. Double real images (50 → 100)")
 print("   2. Add diverse photographic content (cars, food, nature)")
 print("   3. Keep advanced training techniques")
 print("   4. Validate on same datasets that failed\n")
 
 # Install dependencies
-print("📦 Installing dependencies...")
+print(" Installing dependencies...")
 os.system("pip install -q datasets transformers pillow scikit-learn matplotlib torch torchvision")
-print("✅ Dependencies installed!\n")
+print("Dependencies installed. \n")
 
 os.environ['HF_TOKEN'] = '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'
 
@@ -73,14 +69,7 @@ try:
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
-
 class Config:
-    """Configuration for Nano retraining"""
-    
-    # Paths
     OUTPUT_DIR = Path("/home/zeus/nano_detector_retrained")
     MODEL_DIR = OUTPUT_DIR / "nano_detector"
     LOGS_DIR = OUTPUT_DIR / "logs"
@@ -89,8 +78,6 @@ class Config:
     # Device
     RANDOM_SEED = 42
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    
-    # Training
     BATCH_SIZE = 16
     NUM_WORKERS = 4
     PIN_MEMORY = True
@@ -103,8 +90,6 @@ class Config:
     MIXED_PRECISION = True
     USE_BFLOAT16 = True
     EARLY_STOPPING_PATIENCE = 5
-    
-    # Advanced techniques
     USE_FOCAL_LOSS = True
     FOCAL_ALPHA = 0.25
     FOCAL_GAMMA = 2.0
@@ -112,14 +97,10 @@ class Config:
     MIXUP_ALPHA = 0.2
     MIXUP_PROB = 0.5
     USE_TTA = True
-    
-    # Model architecture
     BASE_MODEL = "WinKawaks/vit-small-patch16-224"
     HIDDEN_SIZE = 384
     DROPOUT_1 = 0.3
     DROPOUT_2 = 0.4
-    
-    # Augmentation
     AUG_HORIZONTAL_FLIP = 0.5
     AUG_ROTATION_DEGREES = 15
     AUG_ROTATION_PROB = 0.3
@@ -130,13 +111,9 @@ class Config:
     AUG_CROP_PROB = 0.2
     AUG_CROP_SCALE = (0.8, 1.0)
     AUG_BLUR_PROB = 0.1
-    
-    # Data splits
     TRAIN_RATIO = 0.70
     VAL_RATIO = 0.15
     TEST_RATIO = 0.15
-    
-    # NEW: More diverse real images!
     SAMPLES = {
         'nano': 200,       # All Nano images
         'flux': 100,       # FLUX negatives
@@ -150,11 +127,8 @@ class Config:
         'portraits': 10,   # Photographic portraits
     }
 
-# Create directories
 for dir_path in [Config.OUTPUT_DIR, Config.MODEL_DIR, Config.LOGS_DIR, Config.VISUALIZATIONS_DIR]:
     dir_path.mkdir(parents=True, exist_ok=True)
-
-# Set seeds
 def set_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
@@ -169,55 +143,39 @@ set_seed(Config.RANDOM_SEED)
 if torch.cuda.is_available():
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
-    print("✅ TF32 enabled")
+    print(" TF32 enabled")
 
-# ============================================================================
-# ADVANCED AUGMENTATION
-# ============================================================================
-
-class AdvancedAugmentation:
-    """Advanced image augmentation for training"""
-    
+class AdvancedAugmentation:    
     def __init__(self, config: Config):
         self.config = config
     
     def __call__(self, image: Image.Image) -> Image.Image:
-        """Apply random augmentations"""
-        
-        # Horizontal flip
         if random.random() < self.config.AUG_HORIZONTAL_FLIP:
             image = image.transpose(Image.FLIP_LEFT_RIGHT)
         
-        # Rotation
         if random.random() < self.config.AUG_ROTATION_PROB:
             angle = random.uniform(-self.config.AUG_ROTATION_DEGREES, 
                                   self.config.AUG_ROTATION_DEGREES)
             image = image.rotate(angle, resample=Image.BICUBIC, fillcolor=(128, 128, 128))
         
-        # Color jitter
         if random.random() < self.config.AUG_COLOR_JITTER_PROB:
-            # Brightness
             if random.random() < 0.5:
                 enhancer = ImageEnhance.Brightness(image)
                 factor = 1.0 + random.uniform(-self.config.AUG_BRIGHTNESS, 
                                              self.config.AUG_BRIGHTNESS)
                 image = enhancer.enhance(factor)
-            
-            # Contrast
             if random.random() < 0.5:
                 enhancer = ImageEnhance.Contrast(image)
                 factor = 1.0 + random.uniform(-self.config.AUG_CONTRAST, 
                                              self.config.AUG_CONTRAST)
                 image = enhancer.enhance(factor)
             
-            # Saturation
             if random.random() < 0.5:
                 enhancer = ImageEnhance.Color(image)
                 factor = 1.0 + random.uniform(-self.config.AUG_SATURATION, 
                                              self.config.AUG_SATURATION)
                 image = enhancer.enhance(factor)
-        
-        # Random crop and resize
+                
         if random.random() < self.config.AUG_CROP_PROB:
             w, h = image.size
             scale = random.uniform(*self.config.AUG_CROP_SCALE)
@@ -233,13 +191,8 @@ class AdvancedAugmentation:
         
         return image
 
-# ============================================================================
-# FOCAL LOSS
-# ============================================================================
-
+# Focal Loss
 class FocalLoss(nn.Module):
-    """Focal loss for handling hard examples"""
-    
     def __init__(self, alpha: float = 0.25, gamma: float = 2.0, reduction: str = 'mean'):
         super().__init__()
         self.alpha = alpha
@@ -258,12 +211,8 @@ class FocalLoss(nn.Module):
         else:
             return focal_loss
 
-# ============================================================================
-# MIXUP
-# ============================================================================
 
 def mixup_data(x: torch.Tensor, y: torch.Tensor, alpha: float = 0.2):
-    """Apply mixup augmentation"""
     if alpha > 0:
         lam = np.random.beta(alpha, alpha)
     else:
@@ -271,23 +220,14 @@ def mixup_data(x: torch.Tensor, y: torch.Tensor, alpha: float = 0.2):
     
     batch_size = x.size()[0]
     index = torch.randperm(batch_size).to(x.device)
-    
     mixed_x = lam * x + (1 - lam) * x[index]
     y_a, y_b = y, y[index]
-    
     return mixed_x, y_a, y_b, lam
 
 def mixup_criterion(criterion, pred, y_a, y_b, lam):
-    """Mixed loss for mixup"""
     return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)
 
-# ============================================================================
-# MODEL ARCHITECTURE
-# ============================================================================
-
 class DetectorModel(nn.Module):
-    """ViT-Small based detector with advanced configuration"""
-    
     def __init__(self, config: Config):
         super().__init__()
         
@@ -310,23 +250,15 @@ class DetectorModel(nn.Module):
         
         return logits
 
-# ============================================================================
-# LOGGING UTILITIES
-# ============================================================================
-
 class TrainingLogger:
-    """Comprehensive logging system"""
-    
     def __init__(self, log_dir: Path, model_name: str):
         self.log_dir = log_dir
         self.model_name = model_name
         self.log_file = log_dir / f"{model_name}_training.log"
         
         with open(self.log_file, 'w') as f:
-            f.write(f"="*80 + "\n")
             f.write(f"Training Log for {model_name}\n")
             f.write(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write(f"="*80 + "\n\n")
     
     def log(self, message: str, print_console: bool = True):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -339,8 +271,6 @@ class TrainingLogger:
             print(message)
 
 class MetricsTracker:
-    """Track and visualize training metrics"""
-    
     def __init__(self, model_name: str, save_dir: Path):
         self.model_name = model_name
         self.save_dir = save_dir
@@ -360,13 +290,7 @@ class MetricsTracker:
         with open(save_path, 'w') as f:
             json.dump(dict(self.metrics), f, indent=2)
 
-# ============================================================================
-# PYTORCH DATASET
-# ============================================================================
-
 class DetectorDataset(Dataset):
-    """PyTorch dataset with advanced augmentation"""
-    
     def __init__(self, images: List[Image.Image], labels: List[int], 
                  processor: ViTImageProcessor, config: Config, augment: bool = False):
         self.images = images
@@ -396,35 +320,27 @@ class DetectorDataset(Dataset):
             'labels': torch.tensor(label, dtype=torch.long)
         }
 
-# ============================================================================
-# DATA SPLITTING
-# ============================================================================
-
+# Data Science 
 def stratified_split(images: List, labels: List, sources: List,
                     train_ratio: float, val_ratio: float, test_ratio: float,
                     random_seed: int = 42) -> Tuple:
-    """Stratified split by source to maintain distribution"""
     
     np.random.seed(random_seed)
-    
     source_groups = defaultdict(list)
     for i, source in enumerate(sources):
         source_groups[source].append(i)
     
     train_indices, val_indices, test_indices = [], [], []
-    
-    print("\n📊 Stratified Split by Source:")
+    print("\n Stratified Split by Source:")
     for source, indices in source_groups.items():
         np.random.shuffle(indices)
         
         n = len(indices)
         n_train = int(n * train_ratio)
         n_val = int(n * val_ratio)
-        
         train_indices.extend(indices[:n_train])
         val_indices.extend(indices[n_train:n_train+n_val])
         test_indices.extend(indices[n_train+n_val:])
-        
         print(f"   {source:15s}: {n_train:3d} train | {len(indices[n_train:n_train+n_val]):2d} val | {len(indices[n_train+n_val:]):2d} test")
     
     print(f"\n   Total:")
@@ -434,10 +350,8 @@ def stratified_split(images: List, labels: List, sources: List,
     
     train_imgs = [images[i] for i in train_indices]
     train_lbls = [labels[i] for i in train_indices]
-    
     val_imgs = [images[i] for i in val_indices]
     val_lbls = [labels[i] for i in val_indices]
-    
     test_imgs = [images[i] for i in test_indices]
     test_lbls = [labels[i] for i in test_indices]
     
@@ -445,19 +359,12 @@ def stratified_split(images: List, labels: List, sources: List,
 
 def create_augmented_copies(images: List[Image.Image], num_copies: int, 
                            augmentation: AdvancedAugmentation) -> List[Image.Image]:
-    """Create augmented copies of images"""
     augmented = []
     for img in images[:num_copies]:
         augmented.append(augmentation(img.copy()))
     return augmented
-
-# ============================================================================
-# TRAINER
-# ============================================================================
-
+# Trainer
 class AdvancedTrainer:
-    """Advanced training pipeline"""
-    
     def __init__(self, model_name: str, train_loader, val_loader, test_loader, 
                  save_dir: Path, config: Config):
         self.model_name = model_name
@@ -466,10 +373,8 @@ class AdvancedTrainer:
         self.test_loader = test_loader
         self.save_dir = save_dir
         self.config = config
-        
         self.logger = TrainingLogger(config.LOGS_DIR, model_name)
         self.metrics_tracker = MetricsTracker(model_name, save_dir)
-        
         self.model = DetectorModel(config).to(config.DEVICE)
         
         total_params = sum(p.numel() for p in self.model.parameters())
@@ -478,20 +383,18 @@ class AdvancedTrainer:
         self.logger.log(f"Model initialized: {model_name}")
         self.logger.log(f"Total parameters: {total_params/1e6:.1f}M")
         
-        print(f"\n📊 Model Parameters: {total_params/1e6:.1f}M (ViT-Small)")
+        print(f"\n Model Parameters: {total_params/1e6:.1f}M (ViT-Small)")
         
         self.optimizer = torch.optim.AdamW(
             self.model.parameters(),
             lr=config.LEARNING_RATE,
             weight_decay=config.WEIGHT_DECAY
         )
-        
         total_steps = len(train_loader) * config.NUM_EPOCHS
         warmup_steps = int(total_steps * config.WARMUP_RATIO)
         self.scheduler = get_cosine_schedule_with_warmup(
             self.optimizer, warmup_steps, total_steps
         )
-        
         if config.USE_FOCAL_LOSS:
             self.criterion = FocalLoss(alpha=config.FOCAL_ALPHA, gamma=config.FOCAL_GAMMA)
             print(f"Loss: Focal Loss (alpha={config.FOCAL_ALPHA}, gamma={config.FOCAL_GAMMA})")
@@ -499,7 +402,6 @@ class AdvancedTrainer:
             self.criterion = nn.CrossEntropyLoss(label_smoothing=config.LABEL_SMOOTHING)
         
         self.scaler = GradScaler() if config.MIXED_PRECISION else None
-        
         self.metrics = defaultdict(list)
         self.best_val_acc = 0.0
         self.patience_counter = 0
@@ -518,7 +420,6 @@ class AdvancedTrainer:
                 pixel_values, labels_a, labels_b, lam = mixup_data(
                     pixel_values, labels, self.config.MIXUP_ALPHA
                 )
-                
                 if self.config.MIXED_PRECISION:
                     dtype = torch.bfloat16 if self.config.USE_BFLOAT16 else torch.float16
                     with autocast(dtype=dtype):
@@ -565,7 +466,6 @@ class AdvancedTrainer:
                 
                 self.scheduler.step()
                 self.optimizer.zero_grad()
-                
                 preds = torch.argmax(logits, dim=1)
                 all_preds.extend(preds.cpu().numpy())
                 all_labels.extend(labels.cpu().numpy())
@@ -589,10 +489,8 @@ class AdvancedTrainer:
             for batch in loader:
                 pixel_values = batch['pixel_values'].to(self.config.DEVICE)
                 labels = batch['labels'].to(self.config.DEVICE)
-                
                 logits = self.model(pixel_values)
                 loss = self.criterion(logits, labels)
-                
                 total_loss += loss.item()
                 preds = torch.argmax(logits, dim=1)
                 all_preds.extend(preds.cpu().numpy())
@@ -607,7 +505,6 @@ class AdvancedTrainer:
         tn = sum(1 for p, l in zip(all_preds, all_labels) if p == 0 and l == 0)
         fp = sum(1 for p, l in zip(all_preds, all_labels) if p == 1 and l == 0)
         fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
-        
         return {
             'loss': avg_loss,
             'accuracy': accuracy,
@@ -618,40 +515,31 @@ class AdvancedTrainer:
         }
     
     def train(self):
-        print(f"\n{'='*100}")
-        print(f"🚀 TRAINING {self.model_name.upper()} (ADVANCED)")
-        print(f"{'='*100}\n")
-        
+        print(f" Training  {self.model_name.upper()}")
         training_start = time.time()
         
         for epoch in range(self.config.NUM_EPOCHS):
             epoch_start = time.time()
-            
             print(f"Epoch {epoch+1}/{self.config.NUM_EPOCHS} started")
-            
             train_loss = self.train_epoch(epoch)
-            
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             
             val_metrics = self.evaluate(self.val_loader, use_tta=False)
-            
             epoch_time = time.time() - epoch_start
             
-            print(f"\n📊 Epoch {epoch+1}/{self.config.NUM_EPOCHS} ({epoch_time:.1f}s):")
+            print(f"\n Epoch {epoch+1}/{self.config.NUM_EPOCHS} ({epoch_time:.1f}s):")
             print(f"   Train Loss: {train_loss:.4f}")
             print(f"   Val Loss:   {val_metrics['loss']:.4f}")
             print(f"   Val Acc:    {val_metrics['accuracy']:.4f}")
             print(f"   Val F1:     {val_metrics['f1']:.4f}")
             print(f"   Val FPR:    {val_metrics['fpr']:.4f}")
-            
             self.metrics['train_loss'].append(train_loss)
             self.metrics['val_loss'].append(val_metrics['loss'])
             self.metrics['val_accuracy'].append(val_metrics['accuracy'])
             self.metrics['val_f1'].append(val_metrics['f1'])
             self.metrics['val_fpr'].append(val_metrics['fpr'])
-            
             self.metrics_tracker.add_metrics({
                 'train_loss': train_loss,
                 'val_loss': val_metrics['loss'],
@@ -665,26 +553,24 @@ class AdvancedTrainer:
                 self.patience_counter = 0
                 
                 torch.save(self.model.state_dict(), self.save_dir / "best_model.pt")
-                print(f"   🏆 New best! Accuracy: {self.best_val_acc:.4f}")
+                print(f"New best! Accuracy: {self.best_val_acc:.4f}")
             else:
                 self.patience_counter += 1
             
             if self.patience_counter >= self.config.EARLY_STOPPING_PATIENCE:
-                print(f"\n⚠️  Early stopping triggered after {epoch+1} epochs")
+                print(f"\n Early stopping triggered after {epoch+1} epochs")
                 break
             
             print()
         
         training_time = time.time() - training_start
         
-        print(f"\n{'='*100}")
-        print(f"🧪 FINAL TEST EVALUATION")
-        print(f"{'='*100}\n")
+        print(f"Final Test Evaluation")
         
         self.model.load_state_dict(torch.load(self.save_dir / "best_model.pt"))
         test_metrics = self.evaluate(self.test_loader, use_tta=self.config.USE_TTA)
         
-        print(f"📊 Test Results:")
+        print(f" Test Results:")
         print(f"   Accuracy:  {test_metrics['accuracy']:.4f}")
         print(f"   Precision: {test_metrics['precision']:.4f}")
         print(f"   Recall:    {test_metrics['recall']:.4f}")
@@ -702,29 +588,18 @@ class AdvancedTrainer:
             }, f, indent=2)
         
         self.metrics_tracker.save_metrics()
-        
-        print(f"\n⏱️  Training time: {training_time/60:.1f} minutes")
-        
+        print(f"\n Training time: {training_time/60:.1f} minutes")
         return test_metrics
 
-# ============================================================================
-# ENHANCED DATASET DOWNLOADER
-# ============================================================================
-
+# Dataset Downloader 
 class EnhancedDatasetDownloader:
-    """Downloads images with better error handling"""
-    
     def __init__(self):
         self.min_size = 512
     
     def download_dataset(self, name: str, split: str, num_samples: int, 
-                        skip: int = 0, dataset_key: str = None) -> Tuple[List[Image.Image], str]:
-        """Download images using streaming"""
-        
-        print(f"\n{'='*80}")
+                        skip: int = 0, dataset_key: str = None) -> Tuple[List[Image.Image], 
         print(f"[{dataset_key.upper() if dataset_key else 'DATASET'}]")
-        print(f"{'='*80}")
-        print(f"📥 Downloading: {name}")
+        print(f"  Downloading: {name}")
         print(f"   Samples needed: {num_samples}")
         
         try:
@@ -734,17 +609,15 @@ class EnhancedDatasetDownloader:
                 streaming=True,
                 token=os.environ.get('HF_TOKEN')
             )
-            print(f"   ✅ Streaming mode enabled")
+            print(f"Streaming mode enabled")
         except Exception as e:
-            print(f"   ❌ Failed: {e}")
+            print(f"Failed: {e}")
             return [], dataset_key or name
         
         images = []
         checked = 0
         max_checks = num_samples * 5
-        
         print(f"   Extracting {num_samples} images...")
-        
         for item in dataset:
             if checked < skip:
                 checked += 1
@@ -759,32 +632,24 @@ class EnhancedDatasetDownloader:
                     if field in item and isinstance(item[field], Image.Image):
                         img = item[field]
                         break
-                
                 if img:
                     w, h = img.size
                     if w >= self.min_size and h >= self.min_size:
                         img_resized = img.resize((1024, 1024), Image.BICUBIC)
                         images.append(img_resized.convert('RGB'))
-                        
                         if len(images) >= num_samples:
                             break
-                
                 checked += 1
                     
             except Exception as e:
                 continue
         
-        print(f"   ✅ Extracted {len(images)} images")
-        
+        print(f" Extracted {len(images)} images")
         gc.collect()
-        
         return images, dataset_key or name
-    
+
     def download_all_for_nano(self) -> Dict:
-        """Download all datasets for Nano retraining"""
-        
-        print("\n" + "="*100)
-        print("📦 DOWNLOADING DATASETS - NANO RETRAINING")
+        print("Downloading Datasets")
         print("="*100)
         print("\n⚡ NEW STRATEGY: 100 diverse real images (vs 50 before)")
         print("   Focus: More photographic variety to reduce FPR\n")
