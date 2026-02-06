@@ -54,7 +54,6 @@ print("Advanced Model Retraining")
 print(" Installing dependencies...")
 os.system("pip install -q datasets transformers pillow scikit-learn matplotlib torch torchvision")
 print(" Dependencies installed!\n")
-
 os.environ['HF_TOKEN'] = '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'
 
 import numpy as np
@@ -63,13 +62,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from torch.cuda.amp import autocast, GradScaler
-
 from PIL import Image, ImageEnhance, ImageFilter
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
-
 from transformers import ViTModel, ViTImageProcessor, get_cosine_schedule_with_warmup
 from datasets import load_dataset
-
 try:
     import matplotlib
     matplotlib.use('Agg')
@@ -78,53 +74,42 @@ try:
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
-# ============================================================================
-# COMPREHENSIVE DOCUMENTATION
-# ============================================================================
 
 TRAINING_DOCUMENTATION = """
-================================================================================
-ADVANCED TRAINING DOCUMENTATION - VERSION 2.0
-================================================================================
 
-1. PROBLEM ANALYSIS FROM V1
-----------------------------
+Advanced Modl v 2.0
+
+1. Problem Analysis V1
 Previous models (400 images, 50/50 balance) had issues:
-- 22.5% FPR on real images (too high!)
+- 22.5% FPR on real images (too high)
 - Confused similar AI generators (Nano/SeeDream/ImageGBT)
 - Only 20 "other AI" negatives (insufficient)
 - Only 20 real images (insufficient)
 
 Result: 78% average accuracy, overfitting to "AI-ness" not specific generators
 
-2. NEW DATA STRATEGY - 600 IMAGES PER MODEL
+2. New Data Strategy - 600 Images per Model
 -------------------------------------------
 Total: 600 images per model (50% increase)
 
 Composition:
-├── POSITIVE (240 images - 40%):
-│   └── ALL 200 from target dataset + 40 duplicates with augmentation
+├── Positve (240 images - 40%):
+│   └── All 200 from target dataset + 40 duplicates with augmentation
 │
-└── NEGATIVE (360 images - 60%):
+└── Negative (360 images - 60%):
     ├── FLUX: 100 images (28%)
     ├── SDXL: 100 images (28%)
     ├── Other AI: 100 images (28%) ← 5x increase from 20!
     │   ├── For Nano: 50 SeeDream + 50 ImageGBT
     │   ├── For SeeDream: 50 Nano + 50 ImageGBT
     │   └── For ImageGBT: 50 Nano + 50 SeeDream
-    └── REAL: 60 images (16%) ← 3x increase from 20!
+    └── Real: 60 images (16%) ← 3x increase from 20!
         ├── 20 WikiArt
         ├── 20 Portraits
         ├── 10 Anime
         └── 10 Pokemon
 
-WHY THIS WORKS:
-✅ More "other AI" teaches: "Don't confuse similar generators!"
-✅ More real images reduces false positives
-✅ 40/60 imbalance prioritizes learning what NOT to detect
-✅ Still balanced enough for stable training
-
-3. ADVANCED AUGMENTATION
+3. Advanced Implementation
 -------------------------
 Training augmentation (applied randomly):
 ├── Horizontal flip (50%)
@@ -139,7 +124,7 @@ Test-time augmentation:
 ├── ±5° rotation
 └── Average predictions (ensemble)
 
-4. FOCAL LOSS
+4. Focal Loss
 -------------
 Standard cross-entropy treats all errors equally.
 Focal loss focuses on hard examples:
@@ -151,11 +136,11 @@ Parameters:
 - γ = 2.0 (focus on hard examples)
 
 Benefits:
-✅ Model learns from mistakes
-✅ Better on edge cases
-✅ Improved generalization
+- Model learns from mistakes
+- Better on edge cases
+- Improved generalization
 
-5. MIXUP REGULARIZATION
+5. Mixup Regularisation
 -----------------------
 Mixup blends two images and their labels:
 
@@ -165,11 +150,11 @@ y_mixed = λ * y1 + (1-λ) * y2
 where λ ~ Beta(α=0.2, β=0.2)
 
 Benefits:
-✅ Prevents overfitting
-✅ Smoother decision boundaries
-✅ Better calibration
+- Prevents overfitting
+- Smoother decision boundaries
+- Better calibration
 
-6. TRAINING SCHEDULE
+6. Training Scehdule
 --------------------
 Epochs: 15 (vs 10 before)
 Learning rate: Cosine annealing with warmup
@@ -184,7 +169,7 @@ Optimizer: AdamW
 
 Early stopping: Patience 5 (increased from 4)
 
-7. CONFIDENCE CALIBRATION
+7. Confidence Calabration
 -------------------------
 After training, apply temperature scaling to calibrate probabilities:
 
@@ -193,11 +178,11 @@ P_calibrated = softmax(logits / T)
 Where T is optimized on validation set.
 
 Benefits:
-✅ More reliable confidence scores
-✅ Better threshold selection
-✅ Improved decision making
+- More reliable confidence scores
+- Better threshold selection
+-  Improved decision making
 
-8. EXPECTED IMPROVEMENTS
+8. Expected Improvements
 ------------------------
 Metric                  | V1 (400 img) | V2 (600 img) | Target
 ------------------------|--------------|--------------|--------
@@ -206,7 +191,7 @@ Real Image FPR          | 22.5%        | 8-12%        | <10%
 Other AI Rejection      | 60-66%       | 88-92%       | 90%
 Own Type Detection      | 100%         | 98-100%      | 95%
 
-9. TRAINING TIME
+9. Trainig Time
 ----------------
 Per model on H100:
 - Data loading: 5 minutes
@@ -215,23 +200,21 @@ Per model on H100:
 Total per model: ~10 minutes
 Total for 3 models: ~30 minutes
 
-10. PRODUCTION DEPLOYMENT
+10. Production Deployement
 -------------------------
 After training:
-✅ Test on validation datasets
-✅ Calibrate confidence thresholds
-✅ Set decision boundaries
-✅ Monitor performance metrics
-✅ Plan for periodic retraining
+- Test on validation datasets
+- Calibrate confidence thresholds
+- Set decision boundaries
+- Monitor performance metrics
+- Plan for periodic retraining
 
 Recommended thresholds:
 - High precision: 0.85+ confidence
 - Balanced: 0.70+ confidence
 - High recall: 0.55+ confidence
 
-================================================================================
-END OF DOCUMENTATION
-================================================================================
+End of Documentation
 """
 
 # ============================================================================
