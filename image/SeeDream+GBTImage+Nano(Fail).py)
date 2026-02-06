@@ -51,21 +51,9 @@ import warnings
 warnings.filterwarnings('ignore')
 
 print("Advanced Model Retraining")
-print("="*100)
-print("\n✨ NEW IMPROVEMENTS:")
-print("   1. Better data balance (40/60 positive/negative)")
-print("   2. 5x more 'other AI' negatives (100 vs 20)")
-print("   3. 3x more real images (60 vs 20)")
-print("   4. Advanced augmentation techniques")
-print("   5. Focal loss for hard examples")
-print("   6. Mixup regularization")
-print("   7. Test-time augmentation")
-print("   8. Confidence calibration\n")
-
-# Install dependencies
-print("📦 Installing dependencies...")
+print(" Installing dependencies...")
 os.system("pip install -q datasets transformers pillow scikit-learn matplotlib torch torchvision")
-print("✅ Dependencies installed!\n")
+print(" Dependencies installed!\n")
 
 os.environ['HF_TOKEN'] = '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'
 
