@@ -979,16 +979,12 @@ class FluxGen:
                 start_save = time.time()
                 out.images[0].save(output_path, 'JPEG', quality=95, optimize=True)
                 save_time = time.time() - start_save
-                
-                # VERIFY file was saved
                 if not output_path.exists():
                     raise IOError(f"Failed to save image to {output_path}")
                 
-                file_size = output_path.stat().st_size / 1024  # KB
+                file_size = output_path.stat().st_size / 1024  
                 total_time = gen_time + save_time
-                
-                # Log EVERY image with timing
-                self.logger.info(f"✅ Image {idx}: {total_time:.2f}s total (gen={gen_time:.2f}s, save={save_time:.2f}s, {file_size:.0f}KB)")
+                self.logger.info(f" Image {idx}: {total_time:.2f}s total (gen={gen_time:.2f}s, save={save_time:.2f}s, {file_size:.0f}KB)")
                 
                 del out
                 torch.cuda.empty_cache()
