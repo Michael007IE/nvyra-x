@@ -314,16 +314,12 @@ class Config:
         'other_ai': 100,  # 28% of total (5x increase!)
         'real': 60  # 16% of total (3x increase!)
     }
-
-# Create all necessary directories
 for dir_path in [Config.OUTPUT_DIR, Config.NANO_MODEL_DIR, Config.SEEDREAM_MODEL_DIR,
                  Config.IMAGEGBT_MODEL_DIR, Config.LOGS_DIR, Config.VISUALIZATIONS_DIR,
                  Config.CHECKPOINTS_DIR]:
     dir_path.mkdir(parents=True, exist_ok=True)
 
-# Set random seeds for reproducibility
 def set_seed(seed: int):
-    """Set all random seeds for reproducibility"""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -334,59 +330,43 @@ def set_seed(seed: int):
 
 set_seed(Config.RANDOM_SEED)
 
-# Enable TF32 for faster training on Ampere GPUs
 if torch.cuda.is_available() and Config.TF32_ENABLED:
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
-    print("✅ TF32 enabled for faster training")
-
-# ============================================================================
-# ADVANCED AUGMENTATION
-# ============================================================================
+    print("TF32 enabled for faster training")
 
 class AdvancedAugmentation:
-    """Advanced image augmentation for training"""
-    
     def __init__(self, config: Config):
         self.config = config
     
     def __call__(self, image: Image.Image) -> Image.Image:
-        """Apply random augmentations"""
-        
-        # Horizontal flip
         if random.random() < self.config.AUG_HORIZONTAL_FLIP:
             image = image.transpose(Image.FLIP_LEFT_RIGHT)
-        
-        # Rotation
+          
         if random.random() < self.config.AUG_ROTATION_PROB:
             angle = random.uniform(-self.config.AUG_ROTATION_DEGREES, 
                                   self.config.AUG_ROTATION_DEGREES)
             image = image.rotate(angle, resample=Image.BICUBIC, fillcolor=(128, 128, 128))
-        
-        # Color jitter
+
         if random.random() < self.config.AUG_COLOR_JITTER_PROB:
-            # Brightness
             if random.random() < 0.5:
                 enhancer = ImageEnhance.Brightness(image)
                 factor = 1.0 + random.uniform(-self.config.AUG_BRIGHTNESS, 
                                              self.config.AUG_BRIGHTNESS)
                 image = enhancer.enhance(factor)
-            
-            # Contrast
+
             if random.random() < 0.5:
                 enhancer = ImageEnhance.Contrast(image)
                 factor = 1.0 + random.uniform(-self.config.AUG_CONTRAST, 
                                              self.config.AUG_CONTRAST)
                 image = enhancer.enhance(factor)
             
-            # Saturation
             if random.random() < 0.5:
                 enhancer = ImageEnhance.Color(image)
                 factor = 1.0 + random.uniform(-self.config.AUG_SATURATION, 
                                              self.config.AUG_SATURATION)
                 image = enhancer.enhance(factor)
         
-        # Random crop and resize
         if random.random() < self.config.AUG_CROP_PROB:
             w, h = image.size
             scale = random.uniform(*self.config.AUG_CROP_SCALE)
@@ -395,20 +375,14 @@ class AdvancedAugmentation:
             top = random.randint(0, h - new_h)
             image = image.crop((left, top, left + new_w, top + new_h))
             image = image.resize((w, h), Image.BICUBIC)
-        
-        # Gaussian blur
+      
         if random.random() < self.config.AUG_BLUR_PROB:
             image = image.filter(ImageFilter.GaussianBlur(radius=1))
         
         return image
 
-# ============================================================================
-# FOCAL LOSS
-# ============================================================================
-
+# Focal Loss
 class FocalLoss(nn.Module):
-    """Focal loss for handling hard examples"""
-    
     def __init__(self, alpha: float = 0.25, gamma: float = 2.0, reduction: str = 'mean'):
         super().__init__()
         self.alpha = alpha
@@ -432,12 +406,7 @@ class FocalLoss(nn.Module):
         else:
             return focal_loss
 
-# ============================================================================
-# MIXUP
-# ============================================================================
-
 def mixup_data(x: torch.Tensor, y: torch.Tensor, alpha: float = 0.2):
-    """Apply mixup augmentation"""
     if alpha > 0:
         lam = np.random.beta(alpha, alpha)
     else:
@@ -452,30 +421,19 @@ def mixup_data(x: torch.Tensor, y: torch.Tensor, alpha: float = 0.2):
     return mixed_x, y_a, y_b, lam
 
 def mixup_criterion(criterion, pred, y_a, y_b, lam):
-    """Mixed loss for mixup"""
     return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)
 
-# ============================================================================
-# LOGGING UTILITIES
-# ============================================================================
-
 class TrainingLogger:
-    """Comprehensive logging system"""
-    
     def __init__(self, log_dir: Path, model_name: str):
         self.log_dir = log_dir
         self.model_name = model_name
         self.log_file = log_dir / f"{model_name}_training.log"
-        
-        # Initialize log file
+      
         with open(self.log_file, 'w') as f:
-            f.write(f"="*80 + "\n")
-            f.write(f"Advanced Training Log for {model_name}\n")
+            f.write(f"Training Log for {model_name}\n")
             f.write(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write(f"="*80 + "\n\n")
     
     def log(self, message: str, print_console: bool = True):
-        """Log message to file and optionally console"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_entry = f"[{timestamp}] {message}\n"
         
@@ -486,29 +444,24 @@ class TrainingLogger:
             print(message)
     
     def log_metrics(self, epoch: int, metrics: Dict):
-        """Log epoch metrics"""
         self.log(f"Epoch {epoch} Metrics:", print_console=False)
         for key, value in metrics.items():
             self.log(f"  {key}: {value:.4f}", print_console=False)
         self.log("", print_console=False)
     
     def log_config(self, config: Dict):
-        """Log configuration"""
         self.log("Configuration:", print_console=False)
         for key, value in config.items():
             self.log(f"  {key}: {value}", print_console=False)
         self.log("", print_console=False)
 
 class MetricsTracker:
-    """Track and visualize training metrics"""
-    
     def __init__(self, model_name: str, save_dir: Path):
         self.model_name = model_name
         self.save_dir = save_dir
         self.metrics = defaultdict(list)
     
     def add_metric(self, metric_name: str, value: float):
-        """Add a metric value"""
         self.metrics[metric_name].append(value)
     
     def add_metrics(self, metrics_dict: Dict):
