@@ -293,26 +293,22 @@ class Config:
         'pokemon': 'huggan/pokemon',
     }
     
-    # ========== NEW SAMPLE COUNTS - 600 IMAGES PER MODEL ==========
-    # Total downloads needed:
-    FLUX_TOTAL = 300  # 100 per model × 3
-    SDXL_TOTAL = 300  # 100 per model × 3
-    NANO_TOTAL = 200  # All 200 available
-    SEEDREAM_TOTAL = 200  # All 200 available
-    IMAGEGBT_TOTAL = 200  # All 200 available
-    WIKIART_TOTAL = 60  # 20 per model × 3
-    PORTRAITS_TOTAL = 60  # 20 per model × 3
-    ANIME_TOTAL = 30  # 10 per model × 3
-    POKEMON_TOTAL = 30  # 10 per model × 3
-    
-    # Per model composition (600 total, 40/60 split)
+    FLUX_TOTAL = 300 
+    SDXL_TOTAL = 300 
+    NANO_TOTAL = 200 
+    SEEDREAM_TOTAL = 200 
+    IMAGEGBT_TOTAL = 200  
+    WIKIART_TOTAL = 60  
+    PORTRAITS_TOTAL = 60  
+    ANIME_TOTAL = 30  
+    POKEMON_TOTAL = 30 
     SAMPLES_PER_MODEL = {
-        'positive': 240,  # 40% (200 real + 40 augmented duplicates)
-        'negative_total': 360,  # 60%
-        'flux': 100,  # 28% of total
-        'sdxl': 100,  # 28% of total
-        'other_ai': 100,  # 28% of total (5x increase!)
-        'real': 60  # 16% of total (3x increase!)
+        'positive': 240,  
+        'negative_total': 360,  
+        'flux': 100,  
+        'sdxl': 100,  
+        'other_ai': 100,  
+        'real': 60 
     }
 for dir_path in [Config.OUTPUT_DIR, Config.NANO_MODEL_DIR, Config.SEEDREAM_MODEL_DIR,
                  Config.IMAGEGBT_MODEL_DIR, Config.LOGS_DIR, Config.VISUALIZATIONS_DIR,
@@ -530,32 +526,22 @@ class MetricsTracker:
         plt.close()
     
     def save_metrics(self, save_path: Path = None):
-        """Save metrics to JSON"""
         if save_path is None:
             save_path = self.save_dir / f"{self.model_name}_metrics.json"
         
         with open(save_path, 'w') as f:
             json.dump(dict(self.metrics), f, indent=2)
 
-# ============================================================================
-# DATASET DOWNLOADER
-# ============================================================================
-
+# Dataset Downloader 
 class DatasetDownloader:
-    """Downloads images from HuggingFace with streaming"""
-    
     def __init__(self):
         self.min_size = 512
     
     def download_dataset(self, name: str, split: str, num_samples: int, 
                         skip: int = 0, dataset_key: str = None) -> Tuple[List[Image.Image], str]:
-        """Download images using streaming"""
-        
-        print(f"\n{'='*80}")
         print(f"[{dataset_key.upper() if dataset_key else 'DATASET'}]")
-        print(f"{'='*80}")
-        print(f"📥 Downloading: {name}")
-        print(f"   Samples needed: {num_samples}")
+        print(f" Downloading: {name}")
+        print(f" Samples needed: {num_samples}")
         
         try:
             dataset = load_dataset(
@@ -564,16 +550,16 @@ class DatasetDownloader:
                 streaming=True,
                 token=os.environ.get('HF_TOKEN')
             )
-            print(f"   ✅ Streaming mode enabled")
+            print(f"Streaming mode enabled")
         except Exception as e:
-            print(f"   ❌ Failed: {e}")
+            print(f"Failed: {e}")
             return [], dataset_key or name
         
         images = []
         checked = 0
         max_checks = num_samples * 5
         
-        print(f"   Extracting {num_samples} images...")
+        print(f"Extracting {num_samples} images...")
         
         for item in dataset:
             if checked < skip:
@@ -589,7 +575,7 @@ class DatasetDownloader:
                     if field in item and isinstance(item[field], Image.Image):
                         img = item[field]
                         break
-                
+            
                 if img:
                     w, h = img.size
                     if w >= self.min_size and h >= self.min_size:
@@ -604,106 +590,77 @@ class DatasetDownloader:
             except Exception as e:
                 continue
         
-        print(f"   ✅ Extracted {len(images)} images")
+        print(f"Extracted {len(images)} images")
         
         gc.collect()
         
         return images, dataset_key or name
     
     def download_all(self) -> Dict[str, Tuple[List[Image.Image], str]]:
-        """Download all required datasets"""
-        
-        print("\n" + "="*100)
-        print("📦 DOWNLOADING DATASETS - ADVANCED STRATEGY")
-        print("="*100)
-        print("\n⚡ Downloading with new allocation:")
-        print("   - 100 FLUX per model (vs 80)")
-        print("   - 100 SDXL per model (vs 80)")
-        print("   - 100 other AI per model (vs 20) ← 5x MORE!")
-        print("   - 60 real per model (vs 20) ← 3x MORE!")
+        print("Downloading Datasets")
+        print("\n Downloading with new allocation:")
+        print("   - 100 FLUX per model")
+        print("   - 100 SDXL per model")
+        print("   - 100 other AI per model")
+        print("   - 60 real per model")
         
         all_datasets = {}
         start_time = time.time()
-        
-        # AI Generated datasets
-        print("\n🤖 AI-GENERATED DATASETS:")
-        
+      
+        print("\n AI Generated Datasets")
         images, key = self.download_dataset(Config.DATASETS['flux'], 'train', 
                                            Config.FLUX_TOTAL, dataset_key='flux')
         all_datasets['flux'] = (images, key)
-        
         images, key = self.download_dataset(Config.DATASETS['sdxl'], 'train', 
                                            Config.SDXL_TOTAL, dataset_key='sdxl')
         all_datasets['sdxl'] = (images, key)
-        
         images, key = self.download_dataset(Config.DATASETS['nano'], 'train', 
                                            Config.NANO_TOTAL, dataset_key='nano')
         all_datasets['nano'] = (images, key)
-        
         images, key = self.download_dataset(Config.DATASETS['imagegbt'], 'train', 
                                            Config.IMAGEGBT_TOTAL, dataset_key='imagegbt')
         all_datasets['imagegbt'] = (images, key)
-        
         images, key = self.download_dataset(Config.DATASETS['seedream'], 'train', 
                                            Config.SEEDREAM_TOTAL, dataset_key='seedream')
         all_datasets['seedream'] = (images, key)
         
         # Real images
-        print("\n📷 REAL IMAGE DATASETS:")
-        
+        print("\n Real Image Datasets")
         images, key = self.download_dataset(Config.DATASETS['wikiart'], 'train', 
                                            Config.WIKIART_TOTAL, skip=5000, dataset_key='wikiart')
         all_datasets['wikiart'] = (images, key)
-        
         images, key = self.download_dataset(Config.DATASETS['portraits'], 'train', 
                                            Config.PORTRAITS_TOTAL, dataset_key='portraits')
         all_datasets['portraits'] = (images, key)
-        
         images, key = self.download_dataset(Config.DATASETS['anime'], 'train', 
                                            Config.ANIME_TOTAL, dataset_key='anime')
         all_datasets['anime'] = (images, key)
-        
         images, key = self.download_dataset(Config.DATASETS['pokemon'], 'train', 
                                            Config.POKEMON_TOTAL, dataset_key='pokemon')
         all_datasets['pokemon'] = (images, key)
-        
         total_time = time.time() - start_time
-        
-        print("\n" + "="*100)
-        print("✅ DOWNLOAD COMPLETE!")
-        print("="*100)
-        print(f"\n⏱️  Total time: {total_time/60:.1f} minutes")
-        
-        print("\n📊 Downloaded:")
+  
+        print("Download Complete")
+        print(f"\n Total time: {total_time/60:.1f} minutes")
+        print("\n Downloaded:")
         total_images = 0
         for key, (imgs, _) in all_datasets.items():
             count = len(imgs)
             total_images += count
             print(f"   {key:15s}: {count:,} images")
-        
         print(f"\n   Total: {total_images:,} images")
-        
         return all_datasets
-
-# ============================================================================
-# DATASET BUILDERS - ADVANCED STRATEGY (40/60 SPLIT)
-# ============================================================================
-
+      
 def create_augmented_copies(images: List[Image.Image], num_copies: int, 
                            augmentation: AdvancedAugmentation) -> List[Image.Image]:
-    """Create augmented copies of images"""
     augmented = []
     for img in images[:num_copies]:
         augmented.append(augmentation(img.copy()))
     return augmented
 
 def build_nano_dataset_advanced(all_datasets: Dict, config: Config) -> Tuple:
-    """Build Nano detector dataset - 600 images (240 pos / 360 neg)"""
-    
-    print("\n" + "="*100)
-    print("🔨 BUILDING NANO DETECTOR DATASET (ADVANCED - 600 IMAGES)")
-    print("="*100)
-    print("Strategy: 40% positive / 60% negative")
+    print("Build Nano Banana Pro Advanced")
+    print("40% positive / 60% negative")
     
     nano_imgs, _ = all_datasets['nano']
     flux_imgs, _ = all_datasets['flux']
@@ -714,16 +671,14 @@ def build_nano_dataset_advanced(all_datasets: Dict, config: Config) -> Tuple:
     portraits_imgs, _ = all_datasets['portraits']
     anime_imgs, _ = all_datasets['anime']
     pokemon_imgs, _ = all_datasets['pokemon']
-    
     augmentation = AdvancedAugmentation(config)
-    
     images = []
     labels = []
     sources = []
     
     # Positive: 200 real + 40 augmented = 240 (40%)
     num_nano = min(200, len(nano_imgs))
-    print(f"✅ Nano (positive): {num_nano} real + 40 augmented = {num_nano + 40} images")
+    print(f"Nano (positive): {num_nano} real + 40 augmented = {num_nano + 40} images")
     images.extend(nano_imgs[0:num_nano])
     labels.extend([1] * num_nano)
     sources.extend(['nano'] * num_nano)
@@ -737,35 +692,35 @@ def build_nano_dataset_advanced(all_datasets: Dict, config: Config) -> Tuple:
     # Negative: 360 total (60%)
     # FLUX: 100 images
     num_flux = min(100, len(flux_imgs))
-    print(f"✅ FLUX (negative): FLUX[0:{num_flux}] = {num_flux} images")
+    print(f"FLUX (negative): FLUX[0:{num_flux}] = {num_flux} images")
     images.extend(flux_imgs[0:num_flux])
     labels.extend([0] * num_flux)
     sources.extend(['flux'] * num_flux)
     
     # SDXL: 100 images
     num_sdxl = min(100, len(sdxl_imgs))
-    print(f"✅ SDXL (negative): SDXL[0:{num_sdxl}] = {num_sdxl} images")
+    print(f"SDXL (negative): SDXL[0:{num_sdxl}] = {num_sdxl} images")
     images.extend(sdxl_imgs[0:num_sdxl])
     labels.extend([0] * num_sdxl)
     sources.extend(['sdxl'] * num_sdxl)
     
-    # Other AI: 100 images ← 5x MORE!
+    # Other AI: 100 images 
     num_seedream = min(50, len(seedream_imgs))
     num_gbt = min(50, len(gbt_imgs))
-    print(f"✅ Other AI (negative): SeeDream[0:{num_seedream}] + ImageGBT[0:{num_gbt}] = {num_seedream + num_gbt} images ← 5x MORE!")
+    print(f"Other AI (negative): SeeDream[0:{num_seedream}] + ImageGBT[0:{num_gbt}] = {num_seedream + num_gbt} images")
     images.extend(seedream_imgs[0:num_seedream])
     images.extend(gbt_imgs[0:num_gbt])
     labels.extend([0] * (num_seedream + num_gbt))
     sources.extend(['other_ai'] * (num_seedream + num_gbt))
     
-    # Real: Use what we have
+    # Real
     num_wiki = min(20, len(wikiart_imgs))
     num_portraits = min(20, len(portraits_imgs))
     num_anime = min(10, len(anime_imgs))
     num_pokemon = min(10, len(pokemon_imgs))
     
     real_count = num_wiki + num_portraits + num_anime + num_pokemon
-    print(f"✅ REAL (negative): WikiArt[0:{num_wiki}] + Portraits[0:{num_portraits}] + Anime[0:{num_anime}] + Pokemon[0:{num_pokemon}] = {real_count} images")
+    print(f"Real (negative): WikiArt[0:{num_wiki}] + Portraits[0:{num_portraits}] + Anime[0:{num_anime}] + Pokemon[0:{num_pokemon}] = {real_count} images")
     
     images.extend(wikiart_imgs[0:num_wiki])
     images.extend(portraits_imgs[0:num_portraits])
@@ -778,18 +733,14 @@ def build_nano_dataset_advanced(all_datasets: Dict, config: Config) -> Tuple:
     pos = sum(labels)
     neg = total - pos
     
-    print(f"\n📊 Total: {total} ({pos} pos / {neg} neg)")
+    print(f"\n  Total: {total} ({pos} pos / {neg} neg)")
     print(f"Balance: {pos/total*100:.1f}% vs {neg/total*100:.1f}%")
     
     return images, labels, sources
 
 def build_seedream_dataset_advanced(all_datasets: Dict, config: Config) -> Tuple:
-    """Build SeeDream detector dataset - 600 images (240 pos / 360 neg)"""
-    
-    print("\n" + "="*100)
-    print("🔨 BUILDING SEEDREAM DETECTOR DATASET (ADVANCED - 600 IMAGES)")
-    print("="*100)
-    print("Strategy: 40% positive / 60% negative")
+    print("Building Seedream Dataset - 600 Images")
+    print("40% positive / 60% negative")
     
     seedream_imgs, _ = all_datasets['seedream']
     flux_imgs, _ = all_datasets['flux']
@@ -800,16 +751,14 @@ def build_seedream_dataset_advanced(all_datasets: Dict, config: Config) -> Tuple
     portraits_imgs, _ = all_datasets['portraits']
     anime_imgs, _ = all_datasets['anime']
     pokemon_imgs, _ = all_datasets['pokemon']
-    
     augmentation = AdvancedAugmentation(config)
-    
     images = []
     labels = []
     sources = []
     
     # Positive: 200 real + 40 augmented = 240 (40%)
     num_seedream = min(200, len(seedream_imgs))
-    print(f"✅ SeeDream (positive): {num_seedream} real + 40 augmented = {num_seedream + 40} images")
+    print(f"SeeDream (positive): {num_seedream} real + 40 augmented = {num_seedream + 40} images")
     images.extend(seedream_imgs[0:num_seedream])
     labels.extend([1] * num_seedream)
     sources.extend(['seedream'] * num_seedream)
@@ -820,20 +769,20 @@ def build_seedream_dataset_advanced(all_datasets: Dict, config: Config) -> Tuple
     sources.extend(['seedream_aug'] * len(augmented))
     
     # Negative: 360 total (60%)
-    # FLUX: 100 images (NO OVERLAP)
+    # FLUX: 100 images (No Overlap)
     start_flux = 100
     end_flux = min(200, start_flux + 100, len(flux_imgs))
     num_flux = end_flux - start_flux
-    print(f"✅ FLUX (negative): FLUX[{start_flux}:{end_flux}] = {num_flux} images ← NO OVERLAP!")
+    print(f"FLUX (negative): FLUX[{start_flux}:{end_flux}] = {num_flux} images")
     images.extend(flux_imgs[start_flux:end_flux])
     labels.extend([0] * num_flux)
     sources.extend(['flux'] * num_flux)
     
-    # SDXL: 100 images (NO OVERLAP)
+    # SDXL: 100 images (No Overlap)
     start_sdxl = 100
     end_sdxl = min(200, start_sdxl + 100, len(sdxl_imgs))
     num_sdxl = end_sdxl - start_sdxl
-    print(f"✅ SDXL (negative): SDXL[{start_sdxl}:{end_sdxl}] = {num_sdxl} images ← NO OVERLAP!")
+    print(f"SDXL (negative): SDXL[{start_sdxl}:{end_sdxl}] = {num_sdxl} images")
     images.extend(sdxl_imgs[start_sdxl:end_sdxl])
     labels.extend([0] * num_sdxl)
     sources.extend(['sdxl'] * num_sdxl)
@@ -841,20 +790,20 @@ def build_seedream_dataset_advanced(all_datasets: Dict, config: Config) -> Tuple
     # Other AI: 100 images
     num_nano = min(50, len(nano_imgs) - 100)
     num_gbt = min(50, len(gbt_imgs) - 50)
-    print(f"✅ Other AI (negative): Nano[100:{100+num_nano}] + ImageGBT[50:{50+num_gbt}] = {num_nano + num_gbt} images ← 5x MORE!")
+    print(f"Other AI (negative): Nano[100:{100+num_nano}] + ImageGBT[50:{50+num_gbt}] = {num_nano + num_gbt} images")
     images.extend(nano_imgs[100:100+num_nano])
     images.extend(gbt_imgs[50:50+num_gbt])
     labels.extend([0] * (num_nano + num_gbt))
     sources.extend(['other_ai'] * (num_nano + num_gbt))
     
-    # Real: Use what we have (NO OVERLAP)
+    # Real: No overlap
     num_wiki = min(20, len(wikiart_imgs) - 20)
     num_portraits = min(20, len(portraits_imgs) - 20)
     num_anime = min(10, max(0, len(anime_imgs) - 10))
     num_pokemon = min(10, max(0, len(pokemon_imgs) - 10))
     
     real_count = num_wiki + num_portraits + num_anime + num_pokemon
-    print(f"✅ REAL (negative): WikiArt[20:{20+num_wiki}] + Portraits[20:{20+num_portraits}] + Anime[10:{10+num_anime}] + Pokemon[10:{10+num_pokemon}] = {real_count} images")
+    print(f"Real (negative): WikiArt[20:{20+num_wiki}] + Portraits[20:{20+num_portraits}] + Anime[10:{10+num_anime}] + Pokemon[10:{10+num_pokemon}] = {real_count} images")
     
     images.extend(wikiart_imgs[20:20+num_wiki])
     images.extend(portraits_imgs[20:20+num_portraits])
@@ -869,18 +818,14 @@ def build_seedream_dataset_advanced(all_datasets: Dict, config: Config) -> Tuple
     pos = sum(labels)
     neg = total - pos
     
-    print(f"\n📊 Total: {total} ({pos} pos / {neg} neg)")
+    print(f"\n Total: {total} ({pos} pos / {neg} neg)")
     print(f"Balance: {pos/total*100:.1f}% vs {neg/total*100:.1f}%")
     
     return images, labels, sources
 
 def build_imagegbt_dataset_advanced(all_datasets: Dict, config: Config) -> Tuple:
-    """Build ImageGBT detector dataset - 600 images (240 pos / 360 neg)"""
-    
-    print("\n" + "="*100)
-    print("🔨 BUILDING IMAGEGBT DETECTOR DATASET (ADVANCED - 600 IMAGES)")
-    print("="*100)
-    print("Strategy: 40% positive / 60% negative")
+    print("Building ImageGPT dataset - 600 images")
+    print("40% positive / 60% negative")
     
     gbt_imgs, _ = all_datasets['imagegbt']
     flux_imgs, _ = all_datasets['flux']
@@ -891,40 +836,37 @@ def build_imagegbt_dataset_advanced(all_datasets: Dict, config: Config) -> Tuple
     portraits_imgs, _ = all_datasets['portraits']
     anime_imgs, _ = all_datasets['anime']
     pokemon_imgs, _ = all_datasets['pokemon']
-    
     augmentation = AdvancedAugmentation(config)
-    
     images = []
     labels = []
     sources = []
     
     # Positive: 200 real + 40 augmented = 240 (40%)
     num_gbt = min(200, len(gbt_imgs))
-    print(f"✅ ImageGBT (positive): {num_gbt} real + 40 augmented = {num_gbt + 40} images")
+    print(f"ImageGBT (positive): {num_gbt} real + 40 augmented = {num_gbt + 40} images")
     images.extend(gbt_imgs[0:num_gbt])
     labels.extend([1] * num_gbt)
     sources.extend(['imagegbt'] * num_gbt)
-    
     augmented = create_augmented_copies(gbt_imgs[0:num_gbt], 40, augmentation)
     images.extend(augmented)
     labels.extend([1] * len(augmented))
     sources.extend(['imagegbt_aug'] * len(augmented))
     
     # Negative: 360 total (60%)
-    # FLUX: 100 images (NO OVERLAP)
+    # FLUX: 100 images (No Overlap)
     start_flux = 200
     end_flux = min(300, start_flux + 100, len(flux_imgs))
     num_flux = end_flux - start_flux
-    print(f"✅ FLUX (negative): FLUX[{start_flux}:{end_flux}] = {num_flux} images ← NO OVERLAP!")
+    print(f"FLUX (negative): FLUX[{start_flux}:{end_flux}] = {num_flux} images")
     images.extend(flux_imgs[start_flux:end_flux])
     labels.extend([0] * num_flux)
     sources.extend(['flux'] * num_flux)
     
-    # SDXL: 100 images (NO OVERLAP)
+    # SDXL: 100 images (No Overlap)
     start_sdxl = 200
     end_sdxl = min(300, start_sdxl + 100, len(sdxl_imgs))
     num_sdxl = end_sdxl - start_sdxl
-    print(f"✅ SDXL (negative): SDXL[{start_sdxl}:{end_sdxl}] = {num_sdxl} images ← NO OVERLAP!")
+    print(f"SDXL (negative): SDXL[{start_sdxl}:{end_sdxl}] = {num_sdxl} images")
     images.extend(sdxl_imgs[start_sdxl:end_sdxl])
     labels.extend([0] * num_sdxl)
     sources.extend(['sdxl'] * num_sdxl)
@@ -932,13 +874,13 @@ def build_imagegbt_dataset_advanced(all_datasets: Dict, config: Config) -> Tuple
     # Other AI: 100 images
     num_nano = min(50, len(nano_imgs) - 150)
     num_seedream = min(50, len(seedream_imgs) - 100)
-    print(f"✅ Other AI (negative): Nano[150:{150+num_nano}] + SeeDream[100:{100+num_seedream}] = {num_nano + num_seedream} images ← 5x MORE!")
+    print(f"Other AI (negative): Nano[150:{150+num_nano}] + SeeDream[100:{100+num_seedream}] = {num_nano + num_seedream} images ← 5x MORE!")
     images.extend(nano_imgs[150:150+num_nano])
     images.extend(seedream_imgs[100:100+num_seedream])
     labels.extend([0] * (num_nano + num_seedream))
     sources.extend(['other_ai'] * (num_nano + num_seedream))
     
-    # Real: Use what we have (NO OVERLAP)
+    # Real: No Overlap
     num_wiki = min(20, len(wikiart_imgs) - 40)
     num_portraits = min(20, len(portraits_imgs) - 40)
     num_anime = min(10, max(0, len(anime_imgs) - 20))
@@ -951,7 +893,7 @@ def build_imagegbt_dataset_advanced(all_datasets: Dict, config: Config) -> Tuple
         num_portraits = 0
     
     real_count = num_wiki + num_portraits + num_anime + num_pokemon
-    print(f"✅ REAL (negative): WikiArt[40:{40+num_wiki}] + Portraits[40:{40+num_portraits}] + Anime[20:{20+num_anime}] + Pokemon[{min(18, 20)}:{min(18, 20)+num_pokemon}] = {real_count} images")
+    print(f" Real (negative): WikiArt[40:{40+num_wiki}] + Portraits[40:{40+num_portraits}] + Anime[20:{20+num_anime}] + Pokemon[{min(18, 20)}:{min(18, 20)+num_pokemon}] = {real_count} images")
     
     if num_wiki > 0:
         images.extend(wikiart_imgs[40:40+num_wiki])
@@ -963,45 +905,35 @@ def build_imagegbt_dataset_advanced(all_datasets: Dict, config: Config) -> Tuple
     
     labels.extend([0] * real_count)
     sources.extend(['real'] * real_count)
-    
     total = len(images)
     pos = sum(labels)
     neg = total - pos
-    
-    print(f"\n📊 Total: {total} ({pos} pos / {neg} neg)")
+    print(f"\n Total: {total} ({pos} pos / {neg} neg)")
     print(f"Balance: {pos/total*100:.1f}% vs {neg/total*100:.1f}%")
     
     return images, labels, sources
 
-# ============================================================================
-# DATA SPLITTING
-# ============================================================================
-
+# Data Splitting
 def stratified_split(images: List, labels: List, sources: List,
                     train_ratio: float, val_ratio: float, test_ratio: float,
                     random_seed: int = 42) -> Tuple:
-    """Stratified split by source to maintain distribution"""
     
     np.random.seed(random_seed)
-    
     source_groups = defaultdict(list)
     for i, source in enumerate(sources):
         source_groups[source].append(i)
     
     train_indices, val_indices, test_indices = [], [], []
     
-    print("\n📊 Stratified Split by Source:")
+    print("\n Stratified Split by Source:")
     for source, indices in source_groups.items():
         np.random.shuffle(indices)
-        
         n = len(indices)
         n_train = int(n * train_ratio)
         n_val = int(n * val_ratio)
-        
         train_indices.extend(indices[:n_train])
         val_indices.extend(indices[n_train:n_train+n_val])
         test_indices.extend(indices[n_train+n_val:])
-        
         print(f"   {source:15s}: {n_train:3d} train | {len(indices[n_train:n_train+n_val]):2d} val | {len(indices[n_train+n_val:]):2d} test")
     
     print(f"\n   Total:")
@@ -1020,13 +952,8 @@ def stratified_split(images: List, labels: List, sources: List,
     
     return (train_imgs, train_lbls), (val_imgs, val_lbls), (test_imgs, test_lbls)
 
-# ============================================================================
-# PYTORCH DATASET
-# ============================================================================
 
 class DetectorDataset(Dataset):
-    """PyTorch dataset with advanced augmentation"""
-    
     def __init__(self, images: List[Image.Image], labels: List[int], 
                  processor: ViTImageProcessor, config: Config, augment: bool = False):
         self.images = images
@@ -1044,31 +971,21 @@ class DetectorDataset(Dataset):
     def __getitem__(self, idx):
         image = self.images[idx].copy()
         label = self.labels[idx]
-        
-        # Apply augmentation
         if self.augment:
             image = self.augmentation(image)
         
         inputs = self.processor(images=image, return_tensors="pt")
         pixel_values = inputs['pixel_values'].squeeze(0)
-        
         return {
             'pixel_values': pixel_values,
             'labels': torch.tensor(label, dtype=torch.long)
         }
 
-# ============================================================================
-# MODEL ARCHITECTURE
-# ============================================================================
-
 class DetectorModel(nn.Module):
-    """ViT-Small based detector with advanced configuration"""
-    
     def __init__(self, config: Config):
         super().__init__()
         
         self.vit = ViTModel.from_pretrained(config.BASE_MODEL)
-        
         self.classifier = nn.Sequential(
             nn.Linear(config.HIDDEN_SIZE, config.CLASSIFIER_HIDDEN_1),
             nn.GELU(),
@@ -1086,13 +1003,7 @@ class DetectorModel(nn.Module):
         
         return logits
 
-# ============================================================================
-# TRAINER WITH ADVANCED TECHNIQUES
-# ============================================================================
-
 class AdvancedTrainer:
-    """Advanced training pipeline with Focal Loss, Mixup, TTA"""
-    
     def __init__(self, model_name: str, train_loader, val_loader, test_loader, 
                  save_dir: Path, config: Config):
         self.model_name = model_name
@@ -1101,23 +1012,16 @@ class AdvancedTrainer:
         self.test_loader = test_loader
         self.save_dir = save_dir
         self.config = config
-        
-        # Initialize logging
         self.logger = TrainingLogger(config.LOGS_DIR, model_name)
         self.metrics_tracker = MetricsTracker(model_name, save_dir)
-        
-        # Model
         self.model = DetectorModel(config).to(config.DEVICE)
-        
-        # Count and log parameters
         total_params = sum(p.numel() for p in self.model.parameters())
         trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
-        
         self.logger.log(f"Model initialized: {model_name}")
         self.logger.log(f"Total parameters: {total_params/1e6:.1f}M")
         self.logger.log(f"Trainable parameters: {trainable_params/1e6:.1f}M")
         
-        print(f"\n📊 Model Parameters: {total_params/1e6:.1f}M (ViT-Small)")
+        print(f"\n  Model Parameters: {total_params/1e6:.1f}M (ViT-Small)")
         
         # Optimizer
         self.optimizer = torch.optim.AdamW(
@@ -1126,13 +1030,11 @@ class AdvancedTrainer:
             weight_decay=config.WEIGHT_DECAY
         )
         
-        # Scheduler with cosine annealing
         total_steps = len(train_loader) * config.NUM_EPOCHS
         warmup_steps = int(total_steps * config.WARMUP_RATIO)
         self.scheduler = get_cosine_schedule_with_warmup(
             self.optimizer, warmup_steps, total_steps
         )
-        
         self.logger.log(f"Optimizer: AdamW (lr={config.LEARNING_RATE}, wd={config.WEIGHT_DECAY})")
         self.logger.log(f"Scheduler: Cosine with warmup (warmup={warmup_steps}, total={total_steps})")
         
@@ -1146,7 +1048,6 @@ class AdvancedTrainer:
         
         # Mixed precision
         self.scaler = GradScaler() if config.MIXED_PRECISION else None
-        
         # Tracking
         self.metrics = defaultdict(list)
         self.best_val_acc = 0.0
@@ -1167,7 +1068,6 @@ class AdvancedTrainer:
         self.logger.log_config(config_dict)
     
     def train_epoch(self, epoch: int):
-        """Train one epoch with Mixup"""
         self.model.train()
         total_loss = 0
         all_preds = []
@@ -1176,8 +1076,6 @@ class AdvancedTrainer:
         for batch_idx, batch in enumerate(self.train_loader):
             pixel_values = batch['pixel_values'].to(self.config.DEVICE)
             labels = batch['labels'].to(self.config.DEVICE)
-            
-            # Apply Mixup
             if self.config.USE_MIXUP and random.random() < self.config.MIXUP_PROB:
                 pixel_values, labels_a, labels_b, lam = mixup_data(
                     pixel_values, labels, self.config.MIXUP_ALPHA
@@ -1203,14 +1101,11 @@ class AdvancedTrainer:
                 
                 self.scheduler.step()
                 self.optimizer.zero_grad()
-                
-                # For metrics, use original labels
                 preds = torch.argmax(logits, dim=1)
                 all_preds.extend(preds.cpu().numpy())
                 all_labels.extend(labels_a.cpu().numpy())
                 
             else:
-                # Standard training
                 if self.config.MIXED_PRECISION:
                     dtype = torch.bfloat16 if self.config.USE_BFLOAT16 else torch.float16
                     with autocast(dtype=dtype):
@@ -1231,7 +1126,6 @@ class AdvancedTrainer:
                 
                 self.scheduler.step()
                 self.optimizer.zero_grad()
-                
                 preds = torch.argmax(logits, dim=1)
                 all_preds.extend(preds.cpu().numpy())
                 all_labels.extend(labels.cpu().numpy())
@@ -1246,7 +1140,6 @@ class AdvancedTrainer:
         return total_loss / len(self.train_loader)
     
     def evaluate(self, loader, use_tta: bool = False):
-        """Evaluate model with optional TTA"""
         self.model.eval()
         total_loss = 0
         all_preds = []
@@ -1258,27 +1151,20 @@ class AdvancedTrainer:
                 labels = batch['labels'].to(self.config.DEVICE)
                 
                 if use_tta and self.config.USE_TTA:
-                    # Test-time augmentation
-                    # Original + flipped + rotations
                     tta_logits = []
-                    
-                    # Original
                     logits = self.model(pixel_values)
                     tta_logits.append(logits)
-                    
-                    # Horizontal flip
+                  
                     if self.config.TTA_FLIPS:
                         flipped = torch.flip(pixel_values, dims=[3])
                         logits_flip = self.model(flipped)
                         tta_logits.append(logits_flip)
                     
-                    # Average predictions
                     logits = torch.stack(tta_logits).mean(dim=0)
                 else:
                     logits = self.model(pixel_values)
                 
                 loss = self.criterion(logits, labels)
-                
                 total_loss += loss.item()
                 preds = torch.argmax(logits, dim=1)
                 all_preds.extend(preds.cpu().numpy())
@@ -1305,34 +1191,27 @@ class AdvancedTrainer:
         }
     
     def train(self):
-        """Full training loop with advanced techniques"""
-        print(f"\n{'='*100}")
-        print(f"🚀 TRAINING {self.model_name.upper()} (ADVANCED)")
-        print(f"{'='*100}\n")
-        
+      
+        print(f" Training {self.model_name.upper()}")
         self.logger.log(f"Starting advanced training for {self.model_name}")
         training_start = time.time()
-        
+      
         for epoch in range(self.config.NUM_EPOCHS):
             epoch_start = time.time()
-            
             self.logger.log(f"Epoch {epoch+1}/{self.config.NUM_EPOCHS} started")
-            
-            # Train
             train_loss = self.train_epoch(epoch)
             
             # Cleanup
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-            
-            # Validate (without TTA during training for speed)
+              
             val_metrics = self.evaluate(self.val_loader, use_tta=False)
             
             epoch_time = time.time() - epoch_start
             
             # Display results
-            print(f"\n📊 Epoch {epoch+1}/{self.config.NUM_EPOCHS} ({epoch_time:.1f}s):")
+            print(f"\n Epoch {epoch+1}/{self.config.NUM_EPOCHS} ({epoch_time:.1f}s):")
             print(f"   Train Loss: {train_loss:.4f}")
             print(f"   Val Loss:   {val_metrics['loss']:.4f}")
             print(f"   Val Acc:    {val_metrics['accuracy']:.4f}")
@@ -1367,7 +1246,7 @@ class AdvancedTrainer:
                 self.patience_counter = 0
                 
                 torch.save(self.model.state_dict(), self.save_dir / "best_model.pt")
-                msg = f"   🏆 New best! Accuracy: {self.best_val_acc:.4f}"
+                msg = f"New best! Accuracy: {self.best_val_acc:.4f}"
                 print(msg)
                 self.logger.log(msg)
             else:
@@ -1383,11 +1262,11 @@ class AdvancedTrainer:
                     'scheduler_state_dict': self.scheduler.state_dict(),
                     'best_val_acc': self.best_val_acc,
                 }, checkpoint_path)
-                print(f"   💾 Checkpoint saved: epoch_{epoch+1}.pt")
+                print(f"Checkpoint saved: epoch_{epoch+1}.pt")
             
             # Early stopping
             if self.patience_counter >= self.config.EARLY_STOPPING_PATIENCE:
-                msg = f"⚠️  Early stopping triggered after {epoch+1} epochs"
+                msg = f"Early stopping triggered after {epoch+1} epochs"
                 print(f"\n{msg}")
                 self.logger.log(msg)
                 break
@@ -1397,14 +1276,11 @@ class AdvancedTrainer:
         training_time = time.time() - training_start
         
         # Final test evaluation with TTA
-        print(f"\n{'='*100}")
-        print(f"🧪 FINAL TEST EVALUATION (WITH TTA)")
-        print(f"{'='*100}\n")
-        
+        print(f"Final Test Evaluation with TTA")        
         self.model.load_state_dict(torch.load(self.save_dir / "best_model.pt"))
         test_metrics = self.evaluate(self.test_loader, use_tta=self.config.USE_TTA)
         
-        print(f"📊 Test Results (with TTA={self.config.USE_TTA}):")
+        print(f"   Test Results (with TTA={self.config.USE_TTA}):")
         print(f"   Accuracy:  {test_metrics['accuracy']:.4f}")
         print(f"   Precision: {test_metrics['precision']:.4f}")
         print(f"   Recall:    {test_metrics['recall']:.4f}")
@@ -1412,8 +1288,6 @@ class AdvancedTrainer:
         print(f"   FPR:       {test_metrics['fpr']:.4f}")
         
         self.logger.log(f"Final test results (TTA={self.config.USE_TTA}): {test_metrics}")
-        
-        # Save results
         with open(self.save_dir / "test_results.json", 'w') as f:
             json.dump({
                 'accuracy': float(test_metrics['accuracy']),
@@ -1429,33 +1303,24 @@ class AdvancedTrainer:
         
         with open(self.save_dir / "training_metrics.json", 'w') as f:
             json.dump(dict(self.metrics), f, indent=2)
-        
-        # Generate visualizations
+
         self.metrics_tracker.plot_metrics(
             self.config.VISUALIZATIONS_DIR / f"{self.model_name}_training_curves.png"
         )
         self.metrics_tracker.save_metrics()
         
-        print(f"\n⏱️  Training time: {training_time/60:.1f} minutes")
+        print(f"\n Training time: {training_time/60:.1f} minutes")
         self.logger.log(f"Training completed in {training_time/60:.1f} minutes")
         
         return test_metrics
-
-# ============================================================================
-# MAIN EXECUTION
-# ============================================================================
-
+      
+# Main Execution
 def main():
-    """Main training pipeline for advanced small models"""
-    
     overall_start = time.time()
-    
-    print("\n" + "="*100)
-    print("🎯 INITIALIZING ADVANCED TRAINING SYSTEM")
-    print("="*100)
+    print("Initalising System")
     
     # Display configuration
-    print(f"\n💻 Hardware:")
+    print(f"\n Hardware:")
     if torch.cuda.is_available():
         print(f"   Device: {torch.cuda.get_device_name(0)}")
         print(f"   VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
@@ -1463,17 +1328,17 @@ def main():
     else:
         print(f"   Device: CPU (not recommended)")
     
-    print(f"\n🎯 Models to Train:")
+    print(f"\n Models to Train:")
     print(f"   1. Nano Banana Pro Detector (600 images)")
     print(f"   2. SeeDream 4.5 Detector (600 images)")
     print(f"   3. ImageGBT 1.5 Detector (600 images)")
     
-    print(f"\n⚙️ Architecture:")
+    print(f"\n Architecture:")
     print(f"   Base: ViT-Small (22M params)")
     print(f"   Classifier: 3 layers with progressive dropout")
     print(f"   Advanced: Focal Loss + Mixup + TTA")
     
-    print(f"\n📊 Data Allocation (IMPROVED):")
+    print(f"\n Data Allocation:")
     print(f"   Each model: 600 images (40% pos / 60% neg)")
     print(f"      - 240 positive (200 real + 40 augmented)")
     print(f"      - 360 negative:")
@@ -1482,26 +1347,20 @@ def main():
     print(f"         - 100 Other AI (28%) ← 5x MORE!")
     print(f"         - 60 REAL (16%) ← 3x MORE!")
     
-    # Download all datasets
     downloader = DatasetDownloader()
     all_datasets = downloader.download_all()
-    
-    # Load processor
-    print(f"\n💿 Loading image processor...")
+    print(f"\n Loading image processor...")
     processor = ViTImageProcessor.from_pretrained(Config.BASE_MODEL)
-    print(f"✅ Processor loaded!")
+    print(f" Processor loaded!")
     
     # Store results
     results = {}
     
-    # ========== TRAIN NANO DETECTOR ==========
-    print("\n" + "="*100)
-    print("MODEL 1/3: NANO BANANA PRO DETECTOR (ADVANCED)")
-    print("="*100)
+    print("Model 1/3: Nano Banana Pro Detector")
     
     nano_imgs, nano_lbls, nano_srcs = build_nano_dataset_advanced(all_datasets, Config)
     
-    print("\n📊 Nano Detector Splits:")
+    print("\n Nano Detector Splits:")
     nano_train, nano_val, nano_test = stratified_split(
         nano_imgs, nano_lbls, nano_srcs,
         Config.TRAIN_RATIO, Config.VAL_RATIO, Config.TEST_RATIO, Config.RANDOM_SEED
@@ -1532,14 +1391,11 @@ def main():
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     
-    # ========== TRAIN SEEDREAM DETECTOR ==========
-    print("\n" + "="*100)
-    print("MODEL 2/3: SEEDREAM 4.5 DETECTOR (ADVANCED)")
-    print("="*100)
+    print("Model 2/3: SeeDream 4.5")
     
     seedream_imgs, seedream_lbls, seedream_srcs = build_seedream_dataset_advanced(all_datasets, Config)
     
-    print("\n📊 SeeDream Detector Splits:")
+    print("\n SeeDream Detector Splits:")
     seedream_train, seedream_val, seedream_test = stratified_split(
         seedream_imgs, seedream_lbls, seedream_srcs,
         Config.TRAIN_RATIO, Config.VAL_RATIO, Config.TEST_RATIO, Config.RANDOM_SEED
@@ -1570,14 +1426,11 @@ def main():
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     
-    # ========== TRAIN IMAGEGBT DETECTOR ==========
-    print("\n" + "="*100)
-    print("MODEL 3/3: IMAGEGBT 1.5 DETECTOR (ADVANCED)")
-    print("="*100)
+    print("Model 3/3 GPT Image 1.5")
     
     gbt_imgs, gbt_lbls, gbt_srcs = build_imagegbt_dataset_advanced(all_datasets, Config)
     
-    print("\n📊 ImageGBT Detector Splits:")
+    print("\n GPT Image Detector Splits:")
     gbt_train, gbt_val, gbt_test = stratified_split(
         gbt_imgs, gbt_lbls, gbt_srcs,
         Config.TRAIN_RATIO, Config.VAL_RATIO, Config.TEST_RATIO, Config.RANDOM_SEED
@@ -1606,20 +1459,13 @@ def main():
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-    
-    # ========== FINAL SUMMARY ==========
+
+    # Summery
     total_time = time.time() - overall_start
-    
-    print("\n" + "="*100)
-    print("🎉 ALL 3 MODELS TRAINED WITH ADVANCED TECHNIQUES!")
-    print("="*100)
-    
-    print(f"\n⏱️  Total Training Time: {total_time/60:.1f} minutes ({total_time/3600:.2f} hours)")
-    
-    print("\n📊 Final Test Results Summary:")
-    print("-" * 100)
+    print("Training of Models Complete")
+    print(f"\n Total Training Time: {total_time/60:.1f} minutes ({total_time/3600:.2f} hours)")
+    print("\n Final Test Results Summary:")
     print(f"{'Model':<20} {'Accuracy':<12} {'Precision':<12} {'Recall':<12} {'F1':<12} {'FPR':<12}")
-    print("-" * 100)
     
     for model_name, metrics in results.items():
         print(f"{model_name:<20} "
@@ -1629,27 +1475,21 @@ def main():
               f"{metrics['f1']*100:>10.2f}%  "
               f"{metrics['fpr']*100:>10.2f}%")
     
-    print("-" * 100)
-    
     # Compare with V1
-    print("\n📈 IMPROVEMENT OVER V1:")
-    print("   V1 Average: 78.0%")
+    print("\n Improvement over v1")
+    print("v1 Average: 78.0%")
     v2_avg = sum(r['accuracy'] for r in results.values()) / len(results) * 100
-    print(f"   V2 Average: {v2_avg:.1f}%")
-    print(f"   Improvement: +{v2_avg - 78.0:.1f}%")
-    
-    print(f"\n💾 Models Saved To:")
+    print(f"v2 Average: {v2_avg:.1f}%")
+    print(f"Improvement: +{v2_avg - 78.0:.1f}%")
+    print(f"\n Models Saved To:")
     print(f"   Nano:      {Config.NANO_MODEL_DIR / 'best_model.pt'}")
     print(f"   SeeDream:  {Config.SEEDREAM_MODEL_DIR / 'best_model.pt'}")
     print(f"   ImageGBT:  {Config.IMAGEGBT_MODEL_DIR / 'best_model.pt'}")
-    
-    print(f"\n📊 Training Logs:")
+    print(f"\n Training Logs:")
     print(f"   {Config.LOGS_DIR}")
-    
-    print(f"\n📈 Visualizations:")
+    print(f"\n Visualizations:")
     print(f"   {Config.VISUALIZATIONS_DIR}")
-    
-    # Save overall summary
+  
     summary_path = Config.OUTPUT_DIR / "training_summary.json"
     with open(summary_path, 'w') as f:
         json.dump({
@@ -1681,16 +1521,8 @@ def main():
             }
         }, f, indent=2)
     
-    print(f"\n📝 Summary saved: {summary_path}")
-    
-    print("\n" + "="*100)
-    print("✅ ADVANCED TRAINING COMPLETE!")
-    print("   - 50% more data (600 vs 400)")
-    print("   - 5x more 'other AI' negatives")
-    print("   - 3x more real images")
-    print("   - Advanced techniques (Focal Loss, Mixup, TTA)")
-    print("   - Expected: 88-92% accuracy, <10% FPR")
-    print("="*100 + "\n")
+    print(f"\n Summary saved: {summary_path}")
+    print("Full Training Complete")
 
 
 if __name__ == "__main__":
