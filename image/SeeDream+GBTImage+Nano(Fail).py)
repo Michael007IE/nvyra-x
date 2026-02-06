@@ -217,14 +217,7 @@ Recommended thresholds:
 End of Documentation
 """
 
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
-
 class Config:
-    """Advanced configuration for production training"""
-    
-    # ========== PATHS ==========
     OUTPUT_DIR = Path("/home/zeus/small_detector_training_v2")
     NANO_MODEL_DIR = OUTPUT_DIR / "nano_detector"
     SEEDREAM_MODEL_DIR = OUTPUT_DIR / "seedream_detector"
@@ -232,12 +225,8 @@ class Config:
     LOGS_DIR = OUTPUT_DIR / "logs"
     VISUALIZATIONS_DIR = OUTPUT_DIR / "visualizations"
     CHECKPOINTS_DIR = OUTPUT_DIR / "checkpoints"
-    
-    # ========== GENERAL SETTINGS ==========
     RANDOM_SEED = 42
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    
-    # ========== H100 OPTIMIZATIONS ==========
     BATCH_SIZE = 16
     NUM_WORKERS = 4
     PIN_MEMORY = True
@@ -247,39 +236,29 @@ class Config:
     USE_BFLOAT16 = True
     COMPILE_MODEL = False
     TF32_ENABLED = True
-    
-    # ========== MODEL ARCHITECTURE ==========
     BASE_MODEL = "WinKawaks/vit-small-patch16-224"
     HIDDEN_SIZE = 384
-    DROPOUT_1 = 0.3  # Increased from 0.2
-    DROPOUT_2 = 0.4  # Increased from 0.3
-    DROPOUT_3 = 0.5  # Increased from 0.4
+    DROPOUT_1 = 0.3 
+    DROPOUT_2 = 0.4  
+    DROPOUT_3 = 0.5 
     CLASSIFIER_HIDDEN_1 = 192
     CLASSIFIER_HIDDEN_2 = 96
     NUM_CLASSES = 2
-    
-    # ========== ADVANCED TRAINING SETTINGS ==========
-    NUM_EPOCHS = 15  # Increased from 10
+    NUM_EPOCHS = 15  
     LEARNING_RATE = 3e-5
-    MIN_LEARNING_RATE = 1e-6  # For cosine annealing
-    WEIGHT_DECAY = 0.1  # Increased from 0.05
+    MIN_LEARNING_RATE = 1e-6  
+    WEIGHT_DECAY = 0.1 
     WARMUP_RATIO = 0.1
     MAX_GRAD_NORM = 1.0
-    LABEL_SMOOTHING = 0.1  # Reduced from 0.15 (Mixup provides regularization)
+    LABEL_SMOOTHING = 0.1 
     MIXED_PRECISION = True
-    EARLY_STOPPING_PATIENCE = 5  # Increased from 4
-    
-    # ========== FOCAL LOSS PARAMETERS ==========
+    EARLY_STOPPING_PATIENCE = 5  
     USE_FOCAL_LOSS = True
     FOCAL_ALPHA = 0.25
     FOCAL_GAMMA = 2.0
-    
-    # ========== MIXUP PARAMETERS ==========
     USE_MIXUP = True
     MIXUP_ALPHA = 0.2
-    MIXUP_PROB = 0.5  # Apply mixup to 50% of batches
-    
-    # ========== AUGMENTATION PARAMETERS ==========
+    MIXUP_PROB = 0.5  
     AUG_HORIZONTAL_FLIP = 0.5
     AUG_ROTATION_DEGREES = 15
     AUG_ROTATION_PROB = 0.3
@@ -290,23 +269,15 @@ class Config:
     AUG_CROP_PROB = 0.2
     AUG_CROP_SCALE = (0.8, 1.0)
     AUG_BLUR_PROB = 0.1
-    
-    # ========== TEST-TIME AUGMENTATION ==========
     USE_TTA = True
     TTA_FLIPS = True
     TTA_ROTATIONS = [-5, 0, 5]
-    
-    # ========== DATA SPLITS ==========
     TRAIN_RATIO = 0.70
     VAL_RATIO = 0.15
     TEST_RATIO = 0.15
-    
-    # ========== LOGGING ==========
     LOG_INTERVAL = 10
     SAVE_CHECKPOINTS = True
     CHECKPOINT_EVERY = 5  # Save every 5 epochs
-    
-    # ========== DATASET CONFIGURATION ==========
     DATASETS = {
         # AI Generated
         'flux': 'ash12321/flux-1-dev-generated-10k',
