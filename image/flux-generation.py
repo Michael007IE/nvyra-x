@@ -1003,26 +1003,21 @@ class FluxGen:
         return False
     
     def generate_all(self):
-        """Generate all 10,000 images"""
-        self.logger.info("\n" + "="*80)
-        self.logger.info("🎨 GENERATING 10,000 IMAGES - H100 MAXIMUM SPEED!")
-        self.logger.info("="*80)
+        self.logger.info("Generating 10,000 images")
         self.logger.info(f"Seed: {self.config.SEED}")
         self.logger.info(f"Steps: {self.config.NUM_INFERENCE_STEPS} (20 steps - BLAZING FAST!)")
         self.logger.info(f"Size: {self.config.IMAGE_SIZE}×{self.config.IMAGE_SIZE}")
         self.logger.info(f"Context: {self.config.MAX_SEQUENCE_LENGTH} tokens")
         self.logger.info(f"Prompts: {len(ALL_PROMPTS)} UNIQUE")
         self.logger.info(f"Output: {self.config.OUTPUT_DIR.absolute()}")
-        self.logger.info(f"Expected: ~1s per image = SUB-4 HOURS TOTAL! 🚀")
-        
-        # Test write permissions
+        self.logger.info(f"Expected 4 hours")
         test_file = self.config.OUTPUT_DIR / "test_write.txt"
         try:
             test_file.write_text("test")
             test_file.unlink()
-            self.logger.info("✅ Write permissions verified!")
+            self.logger.info(" Write permissions verified!")
         except Exception as e:
-            self.logger.error(f"❌ Cannot write to {self.config.OUTPUT_DIR}: {e}")
+            self.logger.error(f" Cannot write to {self.config.OUTPUT_DIR}: {e}")
             raise
         
         stats = {
@@ -1033,13 +1028,11 @@ class FluxGen:
         self.logger.info(f"\nProgress: {stats['completed']}/{self.config.NUM_IMAGES}")
         
         if stats['completed'] >= self.config.NUM_IMAGES:
-            self.logger.info("✅ Already complete!")
+            self.logger.info("Already complete!")
             return stats['completed']
         
         self.load()
-        
         start = time.time()
-        
         pbar = tqdm(
             range(self.config.NUM_IMAGES),
             desc="Generating",
@@ -1050,8 +1043,6 @@ class FluxGen:
         for idx in pbar:
             if self.progress.is_done(idx):
                 continue
-            
-            # Get unique prompt for this image
             prompt = ALL_PROMPTS[idx]
             seed = self.config.SEED + idx
             
@@ -1077,9 +1068,7 @@ class FluxGen:
         total = time.time() - start
         final = self.progress.data["completed"]
         
-        self.logger.info("\n" + "="*80)
-        self.logger.info("✅ GENERATION COMPLETE!")
-        self.logger.info("="*80)
+        self.logger.info("Generation Complete")
         self.logger.info(f"Completed: {final}/{self.config.NUM_IMAGES}")
         self.logger.info(f"Failed: {self.progress.data['failed']}")
         self.logger.info(f"Time: {total/3600:.1f} hours")
@@ -1087,28 +1076,17 @@ class FluxGen:
         
         return final
 
-# ============================================================================
-# HUGGINGFACE UPLOADER
-# ============================================================================
-
 class HFUploader:
-    """Upload to HuggingFace"""
-    
     def __init__(self, config, logger):
         self.config = config
         self.logger = logger
     
     def create_dataset(self):
-        """Create dataset"""
-        self.logger.info("\n" + "="*80)
-        self.logger.info("📦 CREATING DATASET")
-        self.logger.info("="*80)
+        self.logger.info("Creating Dataset")
         
         images = sorted(self.config.OUTPUT_DIR.glob("flux_*.jpg"))
         self.logger.info(f"Found {len(images)} images")
-        
         data = {'image': [], 'filename': [], 'seed': [], 'prompt': []}
-        
         for img in tqdm(images, desc="Loading"):
             idx = int(img.stem.split('_')[-1])
             
@@ -1125,16 +1103,12 @@ class HFUploader:
         })
         
         dataset = Dataset.from_dict(data, features=features)
-        self.logger.info(f"✅ Dataset: {len(dataset)} images")
+        self.logger.info(f"Dataset: {len(dataset)} images")
         
         return dataset
     
     def upload(self, dataset):
-        """Upload to hub"""
-        self.logger.info("\n" + "="*80)
-        self.logger.info("📤 UPLOADING TO HUGGINGFACE")
-        self.logger.info("="*80)
-        
+        self.logger.info("Upload to HuggingFace")
         try:
             create_repo(
                 repo_id=self.config.DATASET_REPO,
@@ -1150,29 +1124,25 @@ class HFUploader:
                 token=self.config.HF_TOKEN
             )
             
-            self.logger.info("✅ Upload complete!")
-            self.logger.info(f"🎉 https://huggingface.co/datasets/{self.config.DATASET_REPO}")
+            self.logger.info(" Upload complete!")
+            self.logger.info(f" https://huggingface.co/datasets/{self.config.DATASET_REPO}")
             
         except Exception as e:
-            self.logger.error(f"❌ Upload failed: {e}")
+            self.logger.error(f" Upload failed: {e}")
             raise
 
-# ============================================================================
-# MAIN
-# ============================================================================
-
+# Maim
 def main():
-    """Main pipeline"""
     logger = setup_logger()
     Config.create_directories()
     
     logger.info(f"Model: {Config.FLUX_MODEL}")
     logger.info(f"Images: {Config.NUM_IMAGES}")
     logger.info(f"Unique prompts: {len(ALL_PROMPTS)}")
-    logger.info(f"Quality: BEST (28 steps)")
+    logger.info(f"Quality: Best (28 steps)")
     
     if not torch.cuda.is_available():
-        logger.error("❌ No GPU!")
+        logger.error("No GPU")
         return
     
     try:
@@ -1180,7 +1150,7 @@ def main():
         count = gen.generate_all()
         
         if count < Config.NUM_IMAGES * 0.9:
-            logger.warning(f"⚠️  Only {count}/{Config.NUM_IMAGES} generated")
+            logger.warning(f" Only {count}/{Config.NUM_IMAGES} generated")
             if input("Continue upload? (y/n): ").lower() != 'y':
                 return
         
@@ -1188,18 +1158,16 @@ def main():
         dataset = uploader.create_dataset()
         uploader.upload(dataset)
         
-        logger.info("\n" + "="*80)
-        logger.info("🎉 COMPLETE!")
-        logger.info("="*80)
-        logger.info(f"✅ {count} FLUX.1-dev images with UNIQUE prompts")
-        logger.info(f"✅ Saved: {Config.OUTPUT_DIR}")
-        logger.info(f"✅ Uploaded: {Config.DATASET_REPO}")
+        logger.info("Complete")
+        logger.info(f" {count} FLUX.1-dev images with unique prompts")
+        logger.info(f" Saved: {Config.OUTPUT_DIR}")
+        logger.info(f" Uploaded: {Config.DATASET_REPO}")
         logger.info("="*80)
         
     except KeyboardInterrupt:
-        logger.warning("\n⚠️  Interrupted")
+        logger.warning("\n Interrupted")
     except Exception as e:
-        logger.error(f"\n❌ Error: {e}", exc_info=True)
+        logger.error(f"\n Error: {e}", exc_info=True)
         raise
 
 if __name__ == "__main__":
