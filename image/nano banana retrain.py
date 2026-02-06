@@ -698,7 +698,7 @@ class EnhancedDatasetDownloader:
 
 
 def build_nano_dataset_v2(all_datasets: Dict, config: Config) -> Tuple:
-    print("Building Dataset (640 IMAGES)")
+    print("Building Dataset (640 Images)")
     print("Strategy: 40% positive / 60% negative with diverse real images")
     
     nano_imgs, _ = all_datasets['nano']
@@ -750,7 +750,7 @@ def build_nano_dataset_v2(all_datasets: Dict, config: Config) -> Tuple:
     labels.extend([0] * (num_seedream + num_gbt))
     sources.extend(['other_ai'] * (num_seedream + num_gbt))
     
-    # REAL: 100 images
+    # Real: 100 images
     real_sources = []
     
     # Cars (photographic)
@@ -777,7 +777,7 @@ def build_nano_dataset_v2(all_datasets: Dict, config: Config) -> Tuple:
     sources.extend(['real'] * num_pokemon)
     real_sources.append(('pokemon', num_pokemon))
     
-    # WikiArt (artistic - keep some for balance)
+    # WikiArt 
     num_wikiart = min(20, len(wikiart_imgs))
     print(f"Real - WikiArt (artistic): {num_wikiart} images")
     images.extend(wikiart_imgs[0:num_wikiart])
