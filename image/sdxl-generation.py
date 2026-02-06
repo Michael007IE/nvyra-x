@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 SDXL AI Image Detector - Complete Production Pipeline
-======================================================
 
 A comprehensive pipeline for:
 1. Generating 10,000 SDXL images with diverse prompts
@@ -10,24 +9,18 @@ A comprehensive pipeline for:
 4. Testing with comprehensive metrics
 5. Uploading to HuggingFace
 
-Author: Claude & User
+Author: Ashkan
 Version: 1.0
 Speed Optimized: 10 inference steps (~6-7 sec/image on L4 GPU)
 Total Time: ~17-19 hours on L4 GPU
 """
 
-# ============================================
-# IMPORTS - CAREFUL ORDER TO AVOID CIRCULAR IMPORTS
-# ============================================
-
-# Import torch FIRST and fully initialize
+# Avoid Circular Imports
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
-torch.set_grad_enabled(True)  # Force full initialization
-
-# Core imports
+torch.set_grad_enabled(True) 
 from torchvision import transforms, models
 from PIL import Image
 from pathlib import Path
@@ -38,7 +31,6 @@ import numpy as np
 from datetime import datetime, timedelta
 import time
 
-# Metrics and visualization
 from sklearn.metrics import (
     accuracy_score, 
     precision_score, 
@@ -51,13 +43,10 @@ from sklearn.metrics import (
     precision_recall_curve,
     average_precision_score
 )
-
 import matplotlib
-matplotlib.use('Agg')  # Non-interactive backend
+matplotlib.use('Agg') 
 import matplotlib.pyplot as plt
 import seaborn as sns
-
-# Utilities
 from collections import defaultdict, Counter
 import json
 import shutil
@@ -67,15 +56,10 @@ import os
 from typing import Dict, List, Tuple, Optional, Any
 import logging
 import gc
-
-# HuggingFace
 from huggingface_hub import HfApi, create_repo
 from datasets import Dataset as HFDataset, Image as HFImage
-
-# Diffusers - IMPORT LAST after torch is fully loaded
 from diffusers import StableDiffusionXLPipeline
 
-# Configure
 warnings.filterwarnings('ignore')
 logging.basicConfig(
     level=logging.INFO,
@@ -86,17 +70,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ============================================
-# CONFIGURATION CLASS
-# ============================================
+# Configuration Class
 
 class Config:
-    """
-    Centralized configuration for the entire pipeline.
-    All hyperparameters, paths, and settings in one place.
-    """
-    
-    # ========== Paths ==========
     REAL_IMAGES_DIR = Path("./real_images_dataset")
     OUTPUT_DIR = Path("./detector_outputs/sdxl")
     GENERATED_DIR = OUTPUT_DIR / "generated"
@@ -105,45 +81,31 @@ class Config:
     RESULTS_DIR = OUTPUT_DIR / "results"
     LOGS_DIR = OUTPUT_DIR / "logs"
     PLOTS_DIR = OUTPUT_DIR / "plots"
-    
-    # ========== HuggingFace Settings ==========
     HF_USERNAME = "ash12321"
     HF_TOKEN = "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"
     HF_REPO_NAME = "sdxl-detector-resnet50"
-    HF_DATASET_NAME = "sdxl-generated-10k"
-    
-    # ========== Generation Settings ==========
+    HF_DATASET_NAME = "sdxl-generated-10k"=
     MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
     NUM_IMAGES = 10000
     NUM_INFERENCE_STEPS = 10  # Optimized for speed (6-7 sec/image)
     GUIDANCE_SCALE = 7.0
     IMAGE_SIZE = 1024
     JPEG_QUALITY = 95
-    
-    # ========== Training Settings ==========
     BATCH_SIZE = 32
     NUM_EPOCHS = 30
     LEARNING_RATE = 0.0001
     WEIGHT_DECAY = 0.0001
     TRAIN_SIZE = 256
     GRADIENT_CLIP = 1.0
-    
-    # ========== Data Split Settings ==========
     RANDOM_SEED = 42
     TRAIN_RATIO = 0.70
     VAL_RATIO = 0.15
     TEST_RATIO = 0.15
-    
-    # ========== Early Stopping ==========
     PATIENCE = 5
     MIN_DELTA = 0.001
-    
-    # ========== Device Settings ==========
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     NUM_WORKERS = 4
     PIN_MEMORY = True if torch.cuda.is_available() else False
-    
-    # ========== Augmentation Settings ==========
     FLIP_PROB = 0.5
     ROTATION_DEGREES = 15
     COLOR_JITTER_BRIGHTNESS = 0.2
@@ -151,17 +113,12 @@ class Config:
     COLOR_JITTER_SATURATION = 0.2
     COLOR_JITTER_HUE = 0.1
     TRANSLATE = 0.1
-    
-    # ========== Logging Settings ==========
     LOG_INTERVAL = 100  # Log every N images
     CHECKPOINT_INTERVAL = 1000  # Save checkpoint every N images
     
     @classmethod
     def print_config(cls):
-        """Print all configuration settings"""
-        logger.info("\n" + "="*70)
-        logger.info("CONFIGURATION")
-        logger.info("="*70)
+        logger.info("Configuration")
         logger.info(f"Device: {cls.DEVICE}")
         logger.info(f"Model: {cls.MODEL_ID}")
         logger.info(f"Images to generate: {cls.NUM_IMAGES:,}")
@@ -171,19 +128,8 @@ class Config:
         logger.info(f"Epochs: {cls.NUM_EPOCHS}")
         logger.info(f"Learning rate: {cls.LEARNING_RATE}")
         logger.info(f"Random seed: {cls.RANDOM_SEED}")
-        logger.info("="*70 + "\n")
-
-# ============================================
-# PROMPT GENERATION SYSTEM
-# ============================================
-
+ 
 class PromptGenerator:
-    """
-    Advanced prompt generation system with diverse templates
-    and randomized components for maximum variety.
-    """
-    
-    # Prompt templates - organized by category
     PEOPLE_TEMPLATES = [
         "a portrait of {subject} {action}, {style}",
         "photo of {subject} {location}, {quality}",
@@ -396,16 +342,7 @@ class PromptGenerator:
         """Generate multiple prompts"""
         return [cls.generate() for _ in range(n)]
 
-# ============================================
-# IMAGE GENERATION
-# ============================================
-
 class ImageGenerator:
-    """
-    SDXL image generator with progress tracking,
-    error handling, and resume capability.
-    """
-    
     def __init__(self, config: Config):
         self.config = config
         self.pipe = None
@@ -420,7 +357,6 @@ class ImageGenerator:
         }
     
     def load_model(self):
-        """Load SDXL pipeline with optimizations"""
         logger.info("Loading SDXL model...")
         
         try:
@@ -432,12 +368,9 @@ class ImageGenerator:
             )
             
             self.pipe.to(self.config.DEVICE)
-            
-            # Enable memory optimizations
             self.pipe.enable_attention_slicing()
             self.pipe.enable_vae_slicing()
-            
-            logger.info("✅ Model loaded successfully")
+            logger.info(" Model loaded successfully")
             
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
@@ -446,8 +379,7 @@ class ImageGenerator:
     def generate_single_image(self, index: int) -> bool:
         """Generate a single image with error handling"""
         output_path = self.config.GENERATED_DIR / f"sdxl_{index:06d}.jpg"
-        
-        # Skip if already exists
+
         if output_path.exists():
             self.stats['skipped'] += 1
             return True
