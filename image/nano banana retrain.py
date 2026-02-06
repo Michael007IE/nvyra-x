@@ -650,15 +650,12 @@ class EnhancedDatasetDownloader:
 
     def download_all_for_nano(self) -> Dict:
         print("Downloading Datasets")
-        print("="*100)
-        print("\n⚡ NEW STRATEGY: 100 diverse real images (vs 50 before)")
+        print("\n New Strategy: 100 diverse real images (vs 50 before)")
         print("   Focus: More photographic variety to reduce FPR\n")
         
         all_datasets = {}
         start_time = time.time()
-        
-        # AI Generated
-        print("🤖 AI-GENERATED DATASETS:")
+        print("AI generated datasets")
         
         datasets_to_download = [
             ('ash12321/flux-1-dev-generated-10k', 'train', Config.SAMPLES['flux'], 0, 'flux'),
@@ -671,9 +668,8 @@ class EnhancedDatasetDownloader:
         for name, split, num, skip, key in datasets_to_download:
             images, _ = self.download_dataset(name, split, num, skip, key)
             all_datasets[key] = (images, key)
-        
-        # Real Images
-        print("\n📷 REAL IMAGE DATASETS (DIVERSE):")
+   
+        print("\n Real Image Datasets:")
         
         real_datasets = [
             ('tanganke/stanford_cars', 'train', Config.SAMPLES['cars'], 0, 'cars'),
@@ -688,13 +684,9 @@ class EnhancedDatasetDownloader:
             all_datasets[key] = (images, key)
         
         total_time = time.time() - start_time
-        
-        print("\n" + "="*100)
-        print("✅ DOWNLOAD COMPLETE!")
-        print("="*100)
-        print(f"\n⏱️  Total time: {total_time/60:.1f} minutes")
-        
-        print("\n📊 Downloaded:")
+        print("Download Complete")
+        print(f"\n Total time: {total_time/60:.1f} minutes")
+        print("\n  Downloaded:")
         total_images = 0
         for key, (imgs, _) in all_datasets.items():
             count = len(imgs)
@@ -702,63 +694,49 @@ class EnhancedDatasetDownloader:
             print(f"   {key:15s}: {count:,} images")
         
         print(f"\n   Total: {total_images:,} images")
-        
         return all_datasets
 
-# ============================================================================
-# BUILD NANO DATASET - V2 WITH DIVERSE REAL IMAGES
-# ============================================================================
 
 def build_nano_dataset_v2(all_datasets: Dict, config: Config) -> Tuple:
-    """Build Nano dataset with 100 diverse real images"""
-    
-    print("\n" + "="*100)
-    print("🔨 BUILDING NANO DETECTOR DATASET V2 (640 IMAGES)")
-    print("="*100)
-    print("Strategy: 40% positive / 60% negative with DIVERSE real images")
+    print("Building Dataset (640 IMAGES)")
+    print("Strategy: 40% positive / 60% negative with diverse real images")
     
     nano_imgs, _ = all_datasets['nano']
     flux_imgs, _ = all_datasets['flux']
     sdxl_imgs, _ = all_datasets['sdxl']
     seedream_imgs, _ = all_datasets['seedream']
     gbt_imgs, _ = all_datasets['imagegbt']
-    
-    # NEW: Diverse real images
     cars_imgs, _ = all_datasets['cars']
     food_imgs, _ = all_datasets['food']
     pokemon_imgs, _ = all_datasets['pokemon']
     wikiart_imgs, _ = all_datasets['wikiart']
     portraits_imgs, _ = all_datasets['portraits']
-    
     augmentation = AdvancedAugmentation(config)
     
     images = []
     labels = []
     sources = []
-    
-    # Positive: 240 (200 real + 40 augmented)
+)
     num_nano = min(200, len(nano_imgs))
-    print(f"✅ Nano (positive): {num_nano} real + 40 augmented = {num_nano + 40} images (37.5%)")
+    print(f" Nano (positive): {num_nano} real + 40 augmented = {num_nano + 40} images (37.5%)")
     images.extend(nano_imgs[0:num_nano])
     labels.extend([1] * num_nano)
     sources.extend(['nano'] * num_nano)
-    
     augmented = create_augmented_copies(nano_imgs[0:num_nano], 40, augmentation)
     images.extend(augmented)
     labels.extend([1] * len(augmented))
     sources.extend(['nano_aug'] * len(augmented))
-    
-    # Negative: 400 total (62.5%)
-    # FLUX: 100
+
+    # FLUX:
     num_flux = min(100, len(flux_imgs))
-    print(f"✅ FLUX (negative): {num_flux} images")
+    print(f" FLUX (negative): {num_flux} images")
     images.extend(flux_imgs[0:num_flux])
     labels.extend([0] * num_flux)
     sources.extend(['flux'] * num_flux)
     
-    # SDXL: 100
+    # SDXL: 
     num_sdxl = min(100, len(sdxl_imgs))
-    print(f"✅ SDXL (negative): {num_sdxl} images")
+    print(f" SDXL (negative): {num_sdxl} images")
     images.extend(sdxl_imgs[0:num_sdxl])
     labels.extend([0] * num_sdxl)
     sources.extend(['sdxl'] * num_sdxl)
@@ -766,18 +744,18 @@ def build_nano_dataset_v2(all_datasets: Dict, config: Config) -> Tuple:
     # Other AI: 100
     num_seedream = min(50, len(seedream_imgs))
     num_gbt = min(50, len(gbt_imgs))
-    print(f"✅ Other AI (negative): {num_seedream + num_gbt} images (SeeDream + ImageGBT)")
+    print(f"Other AI (negative): {num_seedream + num_gbt} images (SeeDream + ImageGBT)")
     images.extend(seedream_imgs[0:num_seedream])
     images.extend(gbt_imgs[0:num_gbt])
     labels.extend([0] * (num_seedream + num_gbt))
     sources.extend(['other_ai'] * (num_seedream + num_gbt))
     
-    # REAL: 100 images (DOUBLED!) with DIVERSE sources
+    # REAL: 100 images
     real_sources = []
     
     # Cars (photographic)
     num_cars = min(20, len(cars_imgs))
-    print(f"✅ REAL - Cars (photographic): {num_cars} images ← NEW!")
+    print(f" Real - Cars (photographic): {num_cars} images")
     images.extend(cars_imgs[0:num_cars])
     labels.extend([0] * num_cars)
     sources.extend(['real'] * num_cars)
@@ -785,7 +763,7 @@ def build_nano_dataset_v2(all_datasets: Dict, config: Config) -> Tuple:
     
     # Food (photographic)
     num_food = min(20, len(food_imgs))
-    print(f"✅ REAL - Food (photographic): {num_food} images ← NEW!")
+    print(f"Real - Food (photographic): {num_food} images")
     images.extend(food_imgs[0:num_food])
     labels.extend([0] * num_food)
     sources.extend(['real'] * num_food)
@@ -793,7 +771,7 @@ def build_nano_dataset_v2(all_datasets: Dict, config: Config) -> Tuple:
     
     # Pokemon (sprites)
     num_pokemon = min(20, len(pokemon_imgs))
-    print(f"✅ REAL - Pokemon (sprites): {num_pokemon} images")
+    print(f"Real - Pokemon (sprites): {num_pokemon} images")
     images.extend(pokemon_imgs[0:num_pokemon])
     labels.extend([0] * num_pokemon)
     sources.extend(['real'] * num_pokemon)
@@ -801,7 +779,7 @@ def build_nano_dataset_v2(all_datasets: Dict, config: Config) -> Tuple:
     
     # WikiArt (artistic - keep some for balance)
     num_wikiart = min(20, len(wikiart_imgs))
-    print(f"✅ REAL - WikiArt (artistic): {num_wikiart} images")
+    print(f"Real - WikiArt (artistic): {num_wikiart} images")
     images.extend(wikiart_imgs[0:num_wikiart])
     labels.extend([0] * num_wikiart)
     sources.extend(['real'] * num_wikiart)
@@ -809,53 +787,43 @@ def build_nano_dataset_v2(all_datasets: Dict, config: Config) -> Tuple:
     
     # Portraits (photographic)
     num_portraits = min(10, len(portraits_imgs))
-    print(f"✅ REAL - Portraits (photographic): {num_portraits} images")
+    print(f"Real - Portraits (photographic): {num_portraits} images")
     images.extend(portraits_imgs[0:num_portraits])
     labels.extend([0] * num_portraits)
     sources.extend(['real'] * num_portraits)
     real_sources.append(('portraits', num_portraits))
-    
     total_real = sum(count for _, count in real_sources)
-    print(f"\n📊 Total REAL images: {total_real} (vs 50 before) ← 2x MORE!")
+    print(f"\n Total real images: {total_real}")
     
     total = len(images)
     pos = sum(labels)
     neg = total - pos
     
-    print(f"\n📊 Total: {total} ({pos} pos / {neg} neg)")
+    print(f"\n Total: {total} ({pos} pos / {neg} neg)")
     print(f"Balance: {pos/total*100:.1f}% vs {neg/total*100:.1f}%")
     
     return images, labels, sources
 
-# ============================================================================
-# QUICK VALIDATOR
-# ============================================================================
-
 def quick_validate(model, processor, device):
-    """Quick validation on cars and pokemon to check FPR"""
-    
-    print("\n" + "="*100)
-    print("🧪 QUICK VALIDATION - CARS & POKEMON")
-    print("="*100)
-    
-    # Download test datasets
+    print("Quick Validation")
+ 
     downloader = EnhancedDatasetDownloader()
     
-    print("\n📥 Loading Cars dataset (failed before)...")
+    print("\n Loading Cars dataset (failed before)...")
     cars_imgs, _ = downloader.download_dataset('tanganke/stanford_cars', 'test', 50, 0, 'cars')
     
-    print("\n📥 Loading Pokemon dataset (passed before)...")
+    print("\n Loading Pokemon dataset (passed before)...")
     pokemon_imgs, _ = downloader.download_dataset('huggan/pokemon', 'train', 50, 100, 'pokemon')
     
     if len(cars_imgs) == 0 or len(pokemon_imgs) == 0:
-        print("⚠️  Could not load validation datasets")
+        print("Could not load validation datasets")
         return
     
     # Test on cars
     model.eval()
     predictions = []
     
-    print("\n🚗 Testing on Cars...")
+    print("\n Testing on Cars...")
     for img in cars_imgs:
         inputs = processor(images=img, return_tensors="pt")
         inputs = {k: v.to(device) for k, v in inputs.items()}
@@ -868,14 +836,11 @@ def quick_validate(model, processor, device):
     
     cars_correct = sum(1 for p in predictions if p == 0)  # Should be 0 (not AI)
     cars_fpr = (len(predictions) - cars_correct) / len(predictions) * 100
-    
     print(f"   Cars: {cars_correct}/{len(predictions)} correct")
     print(f"   FPR: {cars_fpr:.1f}% (was 94% before!)")
-    
-    # Test on pokemon
     predictions = []
     
-    print("\n🎮 Testing on Pokemon...")
+    print("\n  Testing on Pokemon...")
     for img in pokemon_imgs:
         inputs = processor(images=img, return_tensors="pt")
         inputs = {k: v.to(device) for k, v in inputs.items()}
@@ -888,68 +853,47 @@ def quick_validate(model, processor, device):
     
     pokemon_correct = sum(1 for p in predictions if p == 0)
     pokemon_fpr = (len(predictions) - pokemon_correct) / len(predictions) * 100
-    
     print(f"   Pokemon: {pokemon_correct}/{len(predictions)} correct")
     print(f"   FPR: {pokemon_fpr:.1f}%")
-    
-    # Overall
     total_correct = cars_correct + pokemon_correct
     total_images = len(cars_imgs) + len(pokemon_imgs)
     overall_fpr = (total_images - total_correct) / total_images * 100
     
-    print(f"\n📊 Overall Real Image Performance:")
+    print(f"\n  Overall Real Image Performance:")
     print(f"   Correct: {total_correct}/{total_images} ({total_correct/total_images*100:.1f}%)")
     print(f"   FPR: {overall_fpr:.1f}% (vs 47% before)")
     
     if overall_fpr < 10:
-        print("   ✅ EXCELLENT! FPR < 10%")
+        print("Excellent FPR < 10%")
     elif overall_fpr < 20:
-        print("   ✅ GOOD! FPR < 20%")
+        print("Good FPR < 20%")
     else:
-        print("   ⚠️  Still high FPR, may need more training")
-
-# ============================================================================
-# MAIN EXECUTION
-# ============================================================================
-
+        print("Still high FPR, may need more training")
 def main():
-    """Retrain Nano detector"""
-    
-    print("\n" + "="*100)
-    print("🎯 INITIALIZING NANO RETRAINING")
-    print("="*100)
+    print("Initalising Nano Banan Retraining")
     
     if torch.cuda.is_available():
-        print(f"\n💻 Hardware:")
+        print(f"\n Hardware:")
         print(f"   Device: {torch.cuda.get_device_name(0)}")
         print(f"   VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
-    
-    # Download datasets
+        
     downloader = EnhancedDatasetDownloader()
     all_datasets = downloader.download_all_for_nano()
-    
-    # Build dataset
     images, labels, sources = build_nano_dataset_v2(all_datasets, Config)
-    
-    # Load processor
-    print(f"\n💿 Loading image processor...")
+    print(f"\n  Loading image processor...")
     processor = ViTImageProcessor.from_pretrained(Config.BASE_MODEL)
-    print(f"✅ Processor loaded!")
+    print(f" Processor loaded!")
     
     # Split data
-    print("\n📊 Nano Detector Splits:")
+    print("\n Nano Detector Splits:")
     
     nano_train, nano_val, nano_test = stratified_split(
         images, labels, sources,
         Config.TRAIN_RATIO, Config.VAL_RATIO, Config.TEST_RATIO, Config.RANDOM_SEED
     )
-    
-    # Create datasets
     nano_train_dataset = DetectorDataset(nano_train[0], nano_train[1], processor, Config, augment=True)
     nano_val_dataset = DetectorDataset(nano_val[0], nano_val[1], processor, Config, augment=False)
     nano_test_dataset = DetectorDataset(nano_test[0], nano_test[1], processor, Config, augment=False)
-    
-    # Create dataloaders
     nano_train_loader = DataLoader(nano_train_dataset, batch_size=Config.BATCH_SIZE, 
                                     shuffle=True, num_workers=Config.NUM_WORKERS, 
                                     pin_memory=Config.PIN_MEMORY)
@@ -958,42 +902,30 @@ def main():
                                   pin_memory=Config.PIN_MEMORY)
     nano_test_loader = DataLoader(nano_test_dataset, batch_size=Config.BATCH_SIZE, 
                                    shuffle=False)
-    
-    # Train
-    print("\n" + "="*100)
-    print("🚀 TRAINING NANO DETECTOR V2")
-    print("="*100)
-    
+    print("Training Nano Banana Detector")
     trainer = AdvancedTrainer("nano_detector_v2", nano_train_loader, nano_val_loader,
                              nano_test_loader, Config.MODEL_DIR, Config)
     results = trainer.train()
     
-    print("\n" + "="*100)
-    print("🧪 QUICK VALIDATION ON PROBLEM DATASETS")
-    print("="*100)
+    print("Quick Validation on Testing Datasets")
     
-    # Load best model
     model = DetectorModel(Config)
     model.load_state_dict(torch.load(Config.MODEL_DIR / "best_model.pt"))
     model.to(Config.DEVICE)
-    
-    # Quick validation
     quick_validate(model, processor, Config.DEVICE)
     
-    print("\n" + "="*100)
-    print("✅ NANO RETRAINING COMPLETE!")
-    print("="*100)
+    print("Nano Retrainig Complete")
     
-    print(f"\n📊 Test Results:")
+    print(f"\n  Test Results:")
     print(f"   Accuracy:  {results['accuracy']*100:.2f}%")
     print(f"   Precision: {results['precision']*100:.2f}%")
     print(f"   Recall:    {results['recall']*100:.2f}%")
     print(f"   F1 Score:  {results['f1']*100:.2f}%")
     print(f"   FPR:       {results['fpr']*100:.2f}%")
     
-    print(f"\n💾 Model saved: {Config.MODEL_DIR / 'best_model.pt'}")
+    print(f"\n  Model saved: {Config.MODEL_DIR / 'best_model.pt'}")
     
-    print("\n📝 Next steps:")
+    print("\n  Next steps:")
     print("   1. Run full validation: python validate_small_models.py")
     print("   2. If FPR < 10%: Upload to HuggingFace")
     print("   3. If FPR still high: Add more diverse real images")
