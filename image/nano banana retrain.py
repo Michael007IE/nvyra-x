@@ -46,7 +46,7 @@ print(" Installing dependencies...")
 os.system("pip install -q datasets transformers pillow scikit-learn matplotlib torch torchvision")
 print("Dependencies installed. \n")
 
-os.environ['HF_TOKEN'] = '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'
+os.environ['HF_TOKEN'] = 'hf_xxxxxxxxxxxxxxxxxx'
 
 import numpy as np
 import torch
