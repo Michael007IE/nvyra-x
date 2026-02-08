@@ -82,7 +82,7 @@ class Config:
     LOGS_DIR = OUTPUT_DIR / "logs"
     PLOTS_DIR = OUTPUT_DIR / "plots"
     HF_USERNAME = "ash12321"
-    HF_TOKEN = "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"
+    HF_TOKEN = "hf_xxxxxxxxxxxxxxxxxxxxxxx"
     HF_REPO_NAME = "sdxl-detector-resnet50"
     HF_DATASET_NAME = "sdxl-generated-10k"=
     MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
@@ -511,10 +511,6 @@ class ImageGenerator:
         
         logger.info(f"Generation report saved to {self.config.LOGS_DIR / 'generation_report.json'}")
 
-# ============================================
-# HUGGINGFACE DATASET UPLOAD
-# ============================================
-
 class DatasetUploader:
     """Upload generated images to HuggingFace"""
     
@@ -642,36 +638,23 @@ MIT License - Free for research and commercial use.
                 token=self.config.HF_TOKEN
             )
             
-            logger.info("="*70)
-            logger.info("✅ DATASET UPLOADED SUCCESSFULLY")
-            logger.info("="*70)
-            logger.info(f"🤗 https://huggingface.co/datasets/{repo_id}")
-            logger.info("="*70 + "\n")
+            logger.info("Dataset Uploaded Sucessfully")
+            logger.info(f" https://huggingface.co/datasets/{repo_id}")
             
         except Exception as e:
             logger.error(f"Dataset upload failed: {e}")
             logger.info(f"Images are still saved locally at: {self.config.GENERATED_DIR}")
 
-# ============================================
-# DATASET SPLITS
-# ============================================
-
 class DatasetSplitter:
-    """Create stratified train/val/test splits"""
-    
     def __init__(self, config: Config):
         self.config = config
         self.stats = {}
     
     def create_splits(self):
-        """Create stratified splits ensuring each dataset is represented"""
-        logger.info("="*70)
-        logger.info("CREATING STRATIFIED DATASET SPLITS")
-        logger.info("="*70)
+        logger.info("Created Stratified Data Splits")
         logger.info(f"Random seed: {self.config.RANDOM_SEED}")
         logger.info(f"Split ratios: Train={self.config.TRAIN_RATIO}, Val={self.config.VAL_RATIO}, Test={self.config.TEST_RATIO}")
-        
-        # Set seeds
+    
         random.seed(self.config.RANDOM_SEED)
         np.random.seed(self.config.RANDOM_SEED)
         
@@ -688,12 +671,9 @@ class DatasetSplitter:
                     real_datasets[dataset_dir.name] = images
                     logger.info(f"  {dataset_dir.name}: {len(images):,} images")
         
-        # Collect fake images
         logger.info("\nCollecting SDXL images...")
         fake_images = list(self.config.GENERATED_DIR.glob("*.jpg"))
         logger.info(f"  sdxl: {len(fake_images):,} images")
-        
-        # Calculate targets
         total_real = sum(len(imgs) for imgs in real_datasets.values())
         target_real = min(self.config.NUM_IMAGES, total_real)
         
@@ -701,22 +681,16 @@ class DatasetSplitter:
         logger.info(f"  Total real available: {total_real:,}")
         logger.info(f"  Target real images: {target_real:,}")
         logger.info(f"  Total fake images: {len(fake_images):,}")
-        
-        # Create splits
         train_data, val_data, test_data = [], [], []
         
         logger.info("\nCreating stratified splits for real images...")
-        
-        # Split real images stratified by dataset
+
         for dataset_name, images in real_datasets.items():
             random.shuffle(images)
             
-            # Proportional sampling
             proportion = len(images) / total_real
             num_from_dataset = min(int(target_real * proportion), len(images))
             selected = images[:num_from_dataset]
-            
-            # Split this dataset
             n = len(selected)
             train_size = int(n * self.config.TRAIN_RATIO)
             val_size = int(n * self.config.VAL_RATIO)
@@ -724,8 +698,6 @@ class DatasetSplitter:
             train_imgs = selected[:train_size]
             val_imgs = selected[train_size:train_size + val_size]
             test_imgs = selected[train_size + val_size:]
-            
-            # Add to splits
             for img in train_imgs:
                 train_data.append({
                     'image_path': str(img),
@@ -751,8 +723,7 @@ class DatasetSplitter:
                 })
             
             logger.info(f"  {dataset_name}: train={len(train_imgs)}, val={len(val_imgs)}, test={len(test_imgs)}")
-        
-        # Split fake images
+
         logger.info("\nShuffling and splitting fake images...")
         random.shuffle(fake_images)
         
@@ -772,23 +743,15 @@ class DatasetSplitter:
             test_data.append({'image_path': str(img), 'label': 1, 'label_name': 'fake', 'source': 'sdxl'})
         
         logger.info(f"  sdxl: train={len(fake_train)}, val={len(fake_val)}, test={len(fake_test)}")
-        
-        # Final shuffle
         random.shuffle(train_data)
         random.shuffle(val_data)
         random.shuffle(test_data)
-        
-        # Save to CSV
         pd.DataFrame(train_data).to_csv(self.config.DATASET_DIR / "train.csv", index=False)
         pd.DataFrame(val_data).to_csv(self.config.DATASET_DIR / "val.csv", index=False)
         pd.DataFrame(test_data).to_csv(self.config.DATASET_DIR / "test.csv", index=False)
-        
-        # Log final statistics
         total = len(train_data) + len(val_data) + len(test_data)
         
-        logger.info("\n" + "="*70)
-        logger.info("SPLITS CREATED SUCCESSFULLY")
-        logger.info("="*70)
+        logger.info("Splits Created Sucessfully")
         logger.info(f"Train: {len(train_data):,} images ({len(train_data)/total*100:.1f}%)")
         logger.info(f"  - Real: {sum(1 for x in train_data if x['label']==0):,}")
         logger.info(f"  - Fake: {sum(1 for x in train_data if x['label']==1):,}")
@@ -799,9 +762,6 @@ class DatasetSplitter:
         logger.info(f"  - Real: {sum(1 for x in test_data if x['label']==0):,}")
         logger.info(f"  - Fake: {sum(1 for x in test_data if x['label']==1):,}")
         logger.info(f"\nSaved to: {self.config.DATASET_DIR}")
-        logger.info("="*70 + "\n")
-        
-        # Save split statistics
         self.stats = {
             'train': {'total': len(train_data), 'real': sum(1 for x in train_data if x['label']==0), 'fake': sum(1 for x in train_data if x['label']==1)},
             'val': {'total': len(val_data), 'real': sum(1 for x in val_data if x['label']==0), 'fake': sum(1 for x in val_data if x['label']==1)},
@@ -812,15 +772,7 @@ class DatasetSplitter:
         with open(self.config.LOGS_DIR / 'split_statistics.json', 'w') as f:
             json.dump(self.stats, f, indent=2)
 
-# ============================================
-# DATASET CLASS
-# ============================================
-
 class ImageDataset(Dataset):
-    """
-    PyTorch Dataset for loading real and fake images
-    with proper error handling and transformations.
-    """
     
     def __init__(self, csv_path: Path, transform=None):
         self.data = pd.read_csv(csv_path)
@@ -849,24 +801,9 @@ class ImageDataset(Dataset):
         return image, label
     
     def get_failed_count(self):
-        """Return number of failed image loads"""
         return self.failed_loads
 
-# ============================================
-# TRAINER CLASS
-# ============================================
-
 class Trainer:
-    """
-    Complete training system with:
-    - Data augmentation
-    - Learning rate scheduling
-    - Early stopping
-    - Checkpointing
-    - Metrics tracking
-    - Visualization
-    """
-    
     def __init__(self, config: Config):
         self.config = config
         self.model = None
@@ -879,18 +816,11 @@ class Trainer:
         self.epochs_no_improve = 0
     
     def setup_model(self):
-        """Initialize model"""
         logger.info("Setting up ResNet-50 model...")
-        
-        # Set seeds
         torch.manual_seed(self.config.RANDOM_SEED)
         torch.cuda.manual_seed(self.config.RANDOM_SEED)
         torch.backends.cudnn.deterministic = True
-        
-        # Load pretrained ResNet-50
         self.model = models.resnet50(weights='IMAGENET1K_V2')
-        
-        # Modify final layer for binary classification
         num_features = self.model.fc.in_features
         self.model.fc = nn.Sequential(
             nn.Dropout(0.5),
@@ -898,8 +828,6 @@ class Trainer:
         )
         
         self.model = self.model.to(self.config.DEVICE)
-        
-        # Loss and optimizer
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = optim.AdamW(
             self.model.parameters(),
@@ -907,7 +835,6 @@ class Trainer:
             weight_decay=self.config.WEIGHT_DECAY
         )
         
-        # LR scheduler
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer,
             mode='max',
@@ -918,15 +845,13 @@ class Trainer:
         total_params = sum(p.numel() for p in self.model.parameters())
         trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         
-        logger.info(f"✅ Model loaded:")
+        logger.info(f" Model loaded:")
         logger.info(f"  Total parameters: {total_params:,}")
         logger.info(f"  Trainable parameters: {trainable_params:,}")
     
     def setup_data(self):
-        """Setup data loaders with augmentation"""
         logger.info("Setting up data loaders...")
         
-        # Training augmentation
         train_transform = transforms.Compose([
             transforms.Resize((self.config.TRAIN_SIZE, self.config.TRAIN_SIZE)),
             transforms.RandomHorizontalFlip(p=self.config.FLIP_PROB),
@@ -942,18 +867,14 @@ class Trainer:
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         ])
         
-        # Validation transform (no augmentation)
         val_transform = transforms.Compose([
             transforms.Resize((self.config.TRAIN_SIZE, self.config.TRAIN_SIZE)),
             transforms.ToTensor(),
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         ])
         
-        # Create datasets
         train_dataset = ImageDataset(self.config.DATASET_DIR / "train.csv", train_transform)
         val_dataset = ImageDataset(self.config.DATASET_DIR / "val.csv", val_transform)
-        
-        # Create data loaders
         self.train_loader = DataLoader(
             train_dataset,
             batch_size=self.config.BATCH_SIZE,
@@ -970,12 +891,11 @@ class Trainer:
             pin_memory=self.config.PIN_MEMORY
         )
         
-        logger.info(f"✅ Data loaders ready:")
+        logger.info(f" Data loaders ready:")
         logger.info(f"  Train: {len(train_dataset):,} images ({len(self.train_loader)} batches)")
         logger.info(f"  Val:   {len(val_dataset):,} images ({len(self.val_loader)} batches)")
     
     def train_epoch(self, epoch: int) -> Tuple[float, float]:
-        """Train for one epoch"""
         self.model.train()
         train_loss = 0.0
         train_correct = 0
@@ -985,27 +905,17 @@ class Trainer:
         
         for batch_idx, (images, labels) in enumerate(pbar):
             images, labels = images.to(self.config.DEVICE), labels.to(self.config.DEVICE)
-            
-            # Forward
+
             self.optimizer.zero_grad()
             outputs = self.model(images)
             loss = self.criterion(outputs, labels)
-            
-            # Backward
             loss.backward()
-            
-            # Gradient clipping
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.GRADIENT_CLIP)
-            
             self.optimizer.step()
-            
-            # Statistics
             train_loss += loss.item()
             _, predicted = outputs.max(1)
             train_total += labels.size(0)
             train_correct += predicted.eq(labels).sum().item()
-            
-            # Update progress bar
             pbar.set_postfix({
                 'loss': f'{loss.item():.4f}',
                 'acc': f'{100.*train_correct/train_total:.2f}%'
@@ -1017,7 +927,6 @@ class Trainer:
         return avg_train_loss, train_acc
     
     def validate(self, epoch: int) -> Tuple[float, float, float, float]:
-        """Validate model"""
         self.model.eval()
         val_loss = 0.0
         val_preds = []
@@ -1036,12 +945,9 @@ class Trainer:
                 
                 val_preds.extend(predicted.cpu().numpy())
                 val_labels.extend(labels.numpy())
-                
-                # Update progress bar
                 current_acc = accuracy_score(val_labels, val_preds) * 100
                 pbar.set_postfix({'acc': f'{current_acc:.2f}%'})
         
-        # Calculate metrics
         val_acc = accuracy_score(val_labels, val_preds) * 100
         val_prec = precision_score(val_labels, val_preds, zero_division=0) * 100
         val_rec = recall_score(val_labels, val_preds, zero_division=0) * 100
@@ -1051,38 +957,26 @@ class Trainer:
         return avg_val_loss, val_acc, val_prec, val_rec, val_f1
     
     def train(self):
-        """Full training loop"""
-        logger.info("="*70)
-        logger.info("TRAINING DETECTOR")
-        logger.info("="*70)
-        
+        logger.info("Training Detector")
         self.config.MODEL_DIR.mkdir(parents=True, exist_ok=True)
-        
         self.setup_model()
         self.setup_data()
         
-        logger.info("\n🚀 Starting training...\n")
+        logger.info("\n Starting training...\n")
         
         for epoch in range(self.config.NUM_EPOCHS):
-            # Train
             train_loss, train_acc = self.train_epoch(epoch)
-            
-            # Validate
             val_loss, val_acc, val_prec, val_rec, val_f1 = self.validate(epoch)
-            
-            # Update learning rate
             self.scheduler.step(val_acc)
             current_lr = self.optimizer.param_groups[0]['lr']
             
-            # Check for improvement
             improved = False
             if val_acc > self.best_val_acc + self.config.MIN_DELTA:
                 self.best_val_acc = val_acc
                 self.best_val_f1 = val_f1
                 self.epochs_no_improve = 0
                 improved = True
-                
-                # Save best checkpoint
+
                 torch.save({
                     'epoch': epoch,
                     'model_state_dict': self.model.state_dict(),
@@ -1099,8 +993,6 @@ class Trainer:
                 }, self.config.MODEL_DIR / "best.pth")
             else:
                 self.epochs_no_improve += 1
-            
-            # Save history
             self.history.append({
                 'epoch': epoch + 1,
                 'train_loss': train_loss,
@@ -1112,48 +1004,31 @@ class Trainer:
                 'val_f1': val_f1,
                 'lr': current_lr
             })
-            
-            # Log epoch results
-            logger.info(f"\n{'='*70}")
+
             logger.info(f"Epoch {epoch+1}/{self.config.NUM_EPOCHS} Summary")
-            logger.info(f"{'='*70}")
             logger.info(f"Train: Loss={train_loss:.4f}, Acc={train_acc:.2f}%")
             logger.info(f"Val:   Loss={val_loss:.4f}, Acc={val_acc:.2f}%")
             logger.info(f"       Precision={val_prec:.2f}%, Recall={val_rec:.2f}%, F1={val_f1:.2f}%")
             logger.info(f"Best:  Acc={self.best_val_acc:.2f}%, F1={self.best_val_f1:.2f}%")
             logger.info(f"LR:    {current_lr:.6f}")
             if improved:
-                logger.info("✅ Model improved and saved!")
-            logger.info(f"{'='*70}\n")
+                logger.info("Model improved and saved!")
             
-            # Early stopping
             if self.epochs_no_improve >= self.config.PATIENCE:
-                logger.info(f"⚠️  Early stopping triggered (no improvement for {self.config.PATIENCE} epochs)")
+                logger.info(f"Early stopping triggered (no improvement for {self.config.PATIENCE} epochs)")
                 break
-        
-        # Save training history
+                
         pd.DataFrame(self.history).to_csv(self.config.MODEL_DIR / "training_history.csv", index=False)
-        
-        # Plot training curves
         self.plot_training_history()
-        
-        logger.info("\n" + "="*70)
-        logger.info("TRAINING COMPLETE")
-        logger.info("="*70)
+        logger.info("Training Complete")
         logger.info(f"Best validation accuracy: {self.best_val_acc:.2f}%")
         logger.info(f"Best validation F1 score: {self.best_val_f1:.2f}%")
         logger.info(f"Model saved to: {self.config.MODEL_DIR / 'best.pth'}")
-        logger.info("="*70 + "\n")
     
     def plot_training_history(self):
-        """Plot and save training curves"""
         self.config.PLOTS_DIR.mkdir(parents=True, exist_ok=True)
-        
         df = pd.DataFrame(self.history)
-        
         fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-        
-        # Loss curves
         axes[0, 0].plot(df['epoch'], df['train_loss'], label='Train Loss', marker='o', linewidth=2)
         axes[0, 0].plot(df['epoch'], df['val_loss'], label='Val Loss', marker='o', linewidth=2)
         axes[0, 0].set_xlabel('Epoch', fontsize=12)
@@ -1161,8 +1036,6 @@ class Trainer:
         axes[0, 0].set_title('Training and Validation Loss', fontsize=14, fontweight='bold')
         axes[0, 0].legend(fontsize=10)
         axes[0, 0].grid(True, alpha=0.3)
-        
-        # Accuracy curves
         axes[0, 1].plot(df['epoch'], df['train_acc'], label='Train Acc', marker='o', linewidth=2)
         axes[0, 1].plot(df['epoch'], df['val_acc'], label='Val Acc', marker='o', linewidth=2)
         axes[0, 1].set_xlabel('Epoch', fontsize=12)
@@ -1170,8 +1043,6 @@ class Trainer:
         axes[0, 1].set_title('Training and Validation Accuracy', fontsize=14, fontweight='bold')
         axes[0, 1].legend(fontsize=10)
         axes[0, 1].grid(True, alpha=0.3)
-        
-        # Validation metrics
         axes[1, 0].plot(df['epoch'], df['val_f1'], label='F1', marker='o', linewidth=2, color='green')
         axes[1, 0].plot(df['epoch'], df['val_precision'], label='Precision', marker='s', linewidth=2, color='blue')
         axes[1, 0].plot(df['epoch'], df['val_recall'], label='Recall', marker='^', linewidth=2, color='orange')
@@ -1180,24 +1051,17 @@ class Trainer:
         axes[1, 0].set_title('Validation Metrics', fontsize=14, fontweight='bold')
         axes[1, 0].legend(fontsize=10)
         axes[1, 0].grid(True, alpha=0.3)
-        
-        # Learning rate
         axes[1, 1].plot(df['epoch'], df['lr'], marker='o', linewidth=2, color='red')
         axes[1, 1].set_xlabel('Epoch', fontsize=12)
         axes[1, 1].set_ylabel('Learning Rate', fontsize=12)
         axes[1, 1].set_title('Learning Rate Schedule', fontsize=14, fontweight='bold')
         axes[1, 1].set_yscale('log')
         axes[1, 1].grid(True, alpha=0.3)
-        
         plt.tight_layout()
         plt.savefig(self.config.PLOTS_DIR / 'training_history.png', dpi=300, bbox_inches='tight')
         plt.close()
         
         logger.info(f"Training plots saved to: {self.config.PLOTS_DIR / 'training_history.png'}")
-
-# ============================================
-# TESTER CLASS
-# ============================================
 
 class ModelTester:
     """
@@ -1215,9 +1079,7 @@ class ModelTester:
         self.results = {}
     
     def load_best_model(self):
-        """Load the best checkpoint"""
         logger.info("Loading best model checkpoint...")
-        
         self.model = models.resnet50()
         num_features = self.model.fc.in_features
         self.model.fc = nn.Sequential(
@@ -1230,20 +1092,14 @@ class ModelTester:
         self.model = self.model.to(self.config.DEVICE)
         self.model.eval()
         
-        logger.info(f"✅ Model loaded (best val acc: {checkpoint.get('val_acc', 0):.2f}%)")
+        logger.info(f" Model loaded (best val acc: {checkpoint.get('val_acc', 0):.2f}%)")
     
     def test(self):
-        """Run comprehensive testing"""
-        logger.info("="*70)
-        logger.info("TESTING MODEL")
-        logger.info("="*70)
+        logger.info("Testing Model")
         
         self.config.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
         self.config.PLOTS_DIR.mkdir(parents=True, exist_ok=True)
-        
         self.load_best_model()
-        
-        # Setup test data
         test_transform = transforms.Compose([
             transforms.Resize((self.config.TRAIN_SIZE, self.config.TRAIN_SIZE)),
             transforms.ToTensor(),
@@ -1259,8 +1115,6 @@ class ModelTester:
         )
         
         logger.info(f"Test set: {len(test_dataset):,} images\n")
-        
-        # Run inference
         logger.info("Running inference on test set...")
         test_preds = []
         test_labels = []
@@ -1276,25 +1130,17 @@ class ModelTester:
                 test_preds.extend(predicted.cpu().numpy())
                 test_labels.extend(labels.numpy())
                 test_probs.extend(probs[:, 1].cpu().numpy())  # Probability of fake
-        
-        # Calculate metrics
+
         self.calculate_all_metrics(test_labels, test_preds, test_probs)
-        
-        # Create visualizations
         self.plot_confusion_matrix(test_labels, test_preds)
         self.plot_roc_curve(test_labels, test_probs)
         self.plot_precision_recall_curve(test_labels, test_probs)
-        
-        # Save results
         self.save_results()
-        
-        # Print summary
         self.print_summary()
         
         return self.results
     
     def calculate_all_metrics(self, labels, preds, probs):
-        """Calculate comprehensive metrics"""
         self.results = {
             'accuracy': float(accuracy_score(labels, preds) * 100),
             'precision': float(precision_score(labels, preds, zero_division=0) * 100),
@@ -1307,7 +1153,6 @@ class ModelTester:
         }
     
     def plot_confusion_matrix(self, labels, preds):
-        """Plot and save confusion matrix"""
         cm = confusion_matrix(labels, preds)
         
         plt.figure(figsize=(10, 8))
@@ -1329,7 +1174,6 @@ class ModelTester:
         plt.close()
     
     def plot_roc_curve(self, labels, probs):
-        """Plot and save ROC curve"""
         fpr, tpr, _ = roc_curve(labels, probs)
         auc = roc_auc_score(labels, probs)
         
@@ -1346,7 +1190,6 @@ class ModelTester:
         plt.close()
     
     def plot_precision_recall_curve(self, labels, probs):
-        """Plot and save precision-recall curve"""
         precision, recall, _ = precision_recall_curve(labels, probs)
         ap = average_precision_score(labels, probs)
         
@@ -1362,41 +1205,28 @@ class ModelTester:
         plt.close()
     
     def save_results(self):
-        """Save test results to JSON"""
         with open(self.config.RESULTS_DIR / 'test_results.json', 'w') as f:
             json.dump(self.results, f, indent=2)
         
         logger.info(f"\nResults saved to: {self.config.RESULTS_DIR / 'test_results.json'}")
     
     def print_summary(self):
-        """Print test results summary"""
-        logger.info("\n" + "="*70)
-        logger.info("TEST RESULTS SUMMARY")
-        logger.info("="*70)
+        logger.info("Test Results Summery")
         logger.info(f"Accuracy:           {self.results['accuracy']:.2f}%")
         logger.info(f"Precision:          {self.results['precision']:.2f}%")
         logger.info(f"Recall:             {self.results['recall']:.2f}%")
         logger.info(f"F1 Score:           {self.results['f1']:.2f}%")
         logger.info(f"AUC-ROC:            {self.results['auc_roc']:.4f}")
         logger.info(f"Average Precision:  {self.results['average_precision']:.4f}")
-        logger.info("="*70)
         logger.info("\nClassification Report:")
-        logger.info("="*70)
         print(self.results['classification_report'])
-        logger.info("="*70 + "\n")
 
-# ============================================
-# MODEL UPLOADER
-# ============================================
 
 class ModelUploader:
-    """Upload trained model to HuggingFace"""
-    
     def __init__(self, config: Config):
         self.config = config
     
     def create_model_card(self) -> str:
-        """Create model card README"""
         return f"""---
 license: mit
 tags:
@@ -1483,36 +1313,29 @@ Generated images: [{self.config.HF_USERNAME}/{self.config.HF_DATASET_NAME}](http
 """
     
     def upload(self):
-        """Upload model and artifacts to HuggingFace"""
-        logger.info("="*70)
-        logger.info("UPLOADING MODEL TO HUGGINGFACE")
-        logger.info("="*70)
+        logger.info("Uploading Model to HuggingFace")
+        
         
         try:
             api = HfApi(token=self.config.HF_TOKEN)
             repo_id = f"{self.config.HF_USERNAME}/{self.config.HF_REPO_NAME}"
-            
-            # Create repo
+
             logger.info(f"Creating repository: {repo_id}")
             create_repo(repo_id=repo_id, token=self.config.HF_TOKEN, private=False, exist_ok=True)
-            
-            # Prepare upload directory
+
             upload_dir = self.config.OUTPUT_DIR / "hf_upload"
             upload_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Copy files
+    
             logger.info("Preparing files...")
             shutil.copy(self.config.MODEL_DIR / "best.pth", upload_dir / "pytorch_model.bin")
             shutil.copy(self.config.MODEL_DIR / "training_history.csv", upload_dir / "training_history.csv")
             shutil.copy(self.config.RESULTS_DIR / "test_results.json", upload_dir / "test_results.json")
-            
-            # Copy plots if they exist
+
             for plot_name in ['training_history.png', 'confusion_matrix.png', 'roc_curve.png', 'precision_recall_curve.png']:
                 plot_path = self.config.PLOTS_DIR / plot_name
                 if plot_path.exists():
                     shutil.copy(plot_path, upload_dir / plot_name)
-            
-            # Create config
+
             config_dict = {
                 "model_type": "resnet50",
                 "task": "image-classification",
@@ -1525,12 +1348,10 @@ Generated images: [{self.config.HF_USERNAME}/{self.config.HF_DATASET_NAME}](http
             
             with open(upload_dir / "config.json", 'w') as f:
                 json.dump(config_dict, f, indent=2)
-            
-            # Create README
+
             with open(upload_dir / "README.md", 'w') as f:
                 f.write(self.create_model_card())
-            
-            # Upload files
+
             logger.info("Uploading files to HuggingFace...")
             for file_path in upload_dir.iterdir():
                 if file_path.is_file():
@@ -1542,26 +1363,16 @@ Generated images: [{self.config.HF_USERNAME}/{self.config.HF_DATASET_NAME}](http
                         token=self.config.HF_TOKEN
                     )
             
-            logger.info("\n" + "="*70)
-            logger.info("✅ MODEL UPLOADED SUCCESSFULLY")
-            logger.info("="*70)
-            logger.info(f"🤗 https://huggingface.co/{repo_id}")
-            logger.info("="*70 + "\n")
+            logger.info("Model Uploaded Sucessfully")
+            logger.info(f"https://huggingface.co/{repo_id}")
             
         except Exception as e:
             logger.error(f"Upload failed: {e}")
-
-# ============================================
-# MAIN PIPELINE
-# ============================================
 
 def main():
     """
     Run the complete SDXL detector pipeline from start to finish.
     """
-    print("\n" + "="*70)
-    print("🚀 SDXL AI IMAGE DETECTOR - COMPLETE PIPELINE")
-    print("="*70)
     print("\nThis pipeline will:")
     print("  1. Generate 10,000 SDXL images with diverse prompts")
     print("  2. Upload images to HuggingFace dataset")
@@ -1573,7 +1384,6 @@ def main():
     print("  - Generation: ~17-19 hours (10 steps, ~6-7 sec/image)")
     print("  - Training: ~8-10 hours")
     print("  - Total: ~25-29 hours")
-    print("\n" + "="*70)
     
     # Print configuration
     Config.print_config()
@@ -1581,7 +1391,7 @@ def main():
     # Confirm start
     response = input("▶️  Start pipeline? (y/n): ").strip().lower()
     if response != 'y':
-        print("❌ Pipeline cancelled")
+        print("Pipeline cancelled")
         return
     
     # Initialize
@@ -1590,61 +1400,57 @@ def main():
     
     try:
         # Step 1: Generate images
-        logger.info("\n🎨 STEP 1: IMAGE GENERATION")
+        logger.info("\n Step 1: Image Generation")
         existing = list(config.GENERATED_DIR.glob("*.jpg")) if config.GENERATED_DIR.exists() else []
         generator = ImageGenerator(config)
         generator.generate_batch(start_idx=len(existing))
         
         # Step 2: Upload dataset
-        logger.info("\n📤 STEP 2: DATASET UPLOAD")
+        logger.info("\n Ste 2: Upload Dataset")
         uploader = DatasetUploader(config)
         uploader.upload()
         
         # Step 3: Create splits
-        logger.info("\n📊 STEP 3: DATASET SPLITS")
+        logger.info("\n Step 3: Dataset Splits")
         splitter = DatasetSplitter(config)
         splitter.create_splits()
         
         # Step 4: Train model
-        logger.info("\n🎓 STEP 4: MODEL TRAINING")
+        logger.info("\n Step 4: Model Training")
         trainer = Trainer(config)
         trainer.train()
         
         # Step 5: Test model
-        logger.info("\n🧪 STEP 5: MODEL TESTING")
+        logger.info("\n Step 5: Model Testing")
         tester = ModelTester(config)
         tester.test()
         
         # Step 6: Upload model
-        logger.info("\n📤 STEP 6: MODEL UPLOAD")
+        logger.info("\n Step 6: Model Upload")
         model_uploader = ModelUploader(config)
         model_uploader.upload()
         
         # Pipeline complete
         elapsed = datetime.now() - start_time
         
-        print("\n" + "="*70)
-        print("🎉 PIPELINE COMPLETE!")
-        print("="*70)
-        print(f"⏱️  Total time: {elapsed}")
-        print(f"📁 Output directory: {config.OUTPUT_DIR}")
-        print(f"🤗 Model: https://huggingface.co/{config.HF_USERNAME}/{config.HF_REPO_NAME}")
-        print(f"🤗 Dataset: https://huggingface.co/datasets/{config.HF_USERNAME}/{config.HF_DATASET_NAME}")
-        print("="*70)
-        print("\n✅ All artifacts saved successfully!")
+        print("Pipeline Complete")
+        print(f" Total time: {elapsed}")
+        print(f" Output directory: {config.OUTPUT_DIR}")
+        print(f" Model: https://huggingface.co/{config.HF_USERNAME}/{config.HF_REPO_NAME}")
+        print(f" Dataset: https://huggingface.co/datasets/{config.HF_USERNAME}/{config.HF_DATASET_NAME}")
+        print("\n All artifacts saved successfully!")
         print(f"   - Generated images: {config.GENERATED_DIR}")
         print(f"   - Model weights: {config.MODEL_DIR}")
         print(f"   - Test results: {config.RESULTS_DIR}")
         print(f"   - Visualizations: {config.PLOTS_DIR}")
         print(f"   - Logs: {config.LOGS_DIR}")
-        print("="*70 + "\n")
         
     except KeyboardInterrupt:
-        logger.info("\n⚠️  Pipeline interrupted by user")
+        logger.info("\n Pipeline interrupted by user")
         logger.info("Progress has been saved and can be resumed")
         
     except Exception as e:
-        logger.error(f"\n❌ Pipeline failed: {e}")
+        logger.error(f"\n Pipeline failed: {e}")
         import traceback
         traceback.print_exc()
         logger.info("\nPartial results may have been saved to:")
