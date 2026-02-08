@@ -30,24 +30,24 @@ reasoning_model = "nvidia/NVIDIA-Nemotron-Nano-12B-v2"
 dense_embed_model = "tencent/KaLM-Embedding-Gemma3-12B-2511"
 sparse_embed_model = "naver/splade-v3"
 pro_secrets = [modal.Secret.from_dict({
-    "hf_token": "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",
-    "langsmith_api_key": "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",
+    "hf_token": "xxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "langsmith_api_key": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
     "langchain_tracing_v2": "true",
-    "langchain_project": "nvyra-x-inference",
-    "tavily_api_key_1": "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",
-    "tavily_api_key_2": "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",
-    "tavily_api_key_3": "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",
-    "tavily_api_key_4": "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",
-    "tavily_api_key_5": "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",
-    "tavily_api_key_6": "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",
-    "qdrant_url": "http://95.111.232.85:6333",
-    "qdrant_collection": "diamond_v30",
-    "turso_url": "https://ai-metadata-cache-f-b.aws-eu-west-1.turso.io",
-    "turso_api": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjYzNDE4NzEsImlkIjoiYmYwODMzM2MtNTZlMS00ZDJhLWIwYmItMGUzOTMyODI0Y2FlIiwicmlkIjoiMjBmOGYyNjgtODkzYS00NTk5LWI0NWYtMDc3M2MxOGYwNjZiIn0.U-A2yG0WcrG1gikhyNrreLm9cDqlQstgiT9IW9mtgM111xNKjEnoEohOnWY9uNXD2kGpe-tHfb54b_hHCXvEBw",
-    "b2_endpoint": "https://s3.eu-central-003.backblazeb2.com",
-    "b2_access_key": "00356bc3d6937610000000004",
-    "b2_secret_key": "K0036GxH+hhmmADw9yh8aspgXhvu6fo",
-    "b2_bucket": "ai-text-cache",
+    "langchain_project": "xxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "tavily_api_key_1": "xxxxxxxxxxxxxxxxxxxxxxxx",
+    "tavily_api_key_2": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "tavily_api_key_3": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "tavily_api_key_4": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "tavily_api_key_5": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "tavily_api_key_6": "xxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "qdrant_url": "xxxxxxxxxxxxxxxxxxxxxxx",
+    "qdrant_collection": "xxxxxxxxxxxx",
+    "turso_url": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "turso_api": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "b2_endpoint": "xxxxxxxxxxxxxxxxxxxxxxxxx",
+    "b2_access_key": "xxxxxxxxxxxxxxxxxxxxx",
+    "b2_secret_key": "xxxxxxxxxxxxxxxxxxxxxxxxx",
+    "b2_bucket": "xxxxxxxxxxxxxxxxxxxxxxxxxxx",
 })]
 
 hf_cache_vol = modal.Volume.from_name("huggingface-cache", create_if_missing=True)
@@ -56,8 +56,6 @@ storage_queue = modal.Queue.from_name("nvyra-storage-queue", create_if_missing=T
 #  Metrics
 
 class InlineMetrics:
-    """Simple metrics collection."""
-
     def __init__(self, service_name: str):
         self.service_name = service_name
         self.counters: Dict[str, int] = {}
@@ -983,10 +981,7 @@ async def storage_worker():
 
 @app.local_entrypoint()
 def main():
-    """Test the pro pipeline."""
-    print("\n" + "=" * 60)
-    print("TESTING NVYRA-X PRO PIPELINE")
-    print("=" * 60 + "\n")
+    print("Testing Nvyra X Pro Pipeline")
 
     test_inputs = [
         "hello, who are you?",
@@ -998,11 +993,9 @@ def main():
 
     for text in test_inputs:
         print(f"\nInput: {text}")
-        print("-" * 40)
         result = engine.verify.remote(VerificationRequest(claim=text))
         print(f"Verdict: {result.verdict.value}")
         print(f"Confidence: {result.confidence_score:.2%}")
         print(f"Route: {result.route_taken}")
         print(f"Cache Hit: {result.cache_hit}")
         print(f"Latency: {result.latency_ms:.0f}ms")
-        print("-" * 40)
