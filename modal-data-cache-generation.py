@@ -203,10 +203,10 @@ class DBScanner:
     @modal.method()
     def get_existing_ids(self) -> List[str]:
         import libsql_experimental as libsql
-        print("🔍 Connecting to Turso for Resume Check...")
+        print("Connecting to Turso for Resume Check...")
         try:
-            turso_url = "https://ai-metadata-cache-f-b.aws-eu-west-1.turso.io"
-            turso_token = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjYzNDE4NzEsImlkIjoiYmYwODMzM2MtNTZlMS00ZDJhLWIwYmItMGUzOTMyODI0Y2FlIiwicmlkIjoiMjBmOGYyNjgtODkzYS00NTk5LWI0NWYtMDc3M2MxOGYwNjZiIn0.U-A2yG0WcrG1gikhyNrreLm9cDqlQstgiT9IW9mtgM111xNKjEnoEohOnWY9uNXD2kGpe-tHfb54b_hHCXvEBw"
+            turso_url = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            turso_token = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
             db = libsql.connect(database=turso_url, auth_token=turso_token)
             res = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='claim_metadata'")
             if not res.fetchone(): return []
@@ -248,14 +248,14 @@ class GodModeRefinery:
         self.cctx = zstandard.ZstdCompressor(level=3)
         self.s3 = boto3.client(
             's3', 
-            endpoint_url="https://s3.eu-central-003.backblazeb2.com", 
-            aws_access_key_id="00356bc3d6937610000000004", 
-            aws_secret_access_key="K0036GxH+hhmmADw9yh8aspgXhvu6fo",
+            endpoint_url="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", 
+            aws_access_key_id="xxxxxxxxxxxxxxxxxxxxx", 
+            aws_secret_access_key="xxxxxxxxxxxxxxxxxxxxx",
             config=Config(max_pool_connections=100) 
         )
         self.qc = QdrantClient(url="http://95.111.232.85:6333")
-        turso_url = "https://ai-metadata-cache-f-b.aws-eu-west-1.turso.io"
-        turso_token = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjYzNDE4NzEsImlkIjoiYmYwODMzM2MtNTZlMS00ZDJhLWIwYmItMGUzOTMyODI0Y2FlIiwicmlkIjoiMjBmOGYyNjgtODkzYS00NTk5LWI0NWYtMDc3M2MxOGYwNjZiIn0.U-A2yG0WcrG1gikhyNrreLm9cDqlQstgiT9IW9mtgM111xNKjEnoEohOnWY9uNXD2kGpe-tHfb54b_hHCXvEBw"
+        turso_url = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        turso_token = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
         self.db = libsql.connect(database=turso_url, auth_token=turso_token)
         self.db.execute("CREATE TABLE IF NOT EXISTS claim_metadata (id TEXT PRIMARY KEY, claim_id TEXT, verdict TEXT, falsity_score REAL, lite_score REAL, heavy_score REAL, s3_key TEXT, source_urls TEXT, source_titles TEXT, source_publishers TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)")
         self.db.execute("CREATE INDEX IF NOT EXISTS idx_claim_id ON claim_metadata(claim_id)")
@@ -601,6 +601,6 @@ def main(input_file: str):
                 futs = [f for f in futs if not f.done()]
         await asyncio.gather(*futs)
 
-    print("🚀 Starting GPU Monolith...")
+    print("Starting GPU Monolith...")
     asyncio.run(driver())
-    print("👋 Job Fully Complete.")
+    print("Job Fully Complete.")
