@@ -21,7 +21,7 @@ print("'uv' installed and environment cleaned.")
 VLLM_VERSION = "0.7.3"
 CUDA_INDEX_URL = "https://download.pytorch.org/whl/cu121" # Use 121 as the target CUDA version
 
-print(f"🚀 Attempting installation of vLLM v{VLLM_VERSION} via PyPI/CUDA Index...")
+print(f"Attempting installation of vLLM v{VLLM_VERSION} via PyPI/CUDA Index...")
 !uv pip install vllm=={VLLM_VERSION} --extra-index-url {CUDA_INDEX_URL}
 !uv pip install --no-build-isolation flash-attn xformers
 
