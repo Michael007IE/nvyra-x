@@ -567,7 +567,7 @@ print("\n Installing dependencies...")
 os.system("pip install -q datasets transformers pillow scikit-learn matplotlib torch torchvision")
 print("Dependencies installed!\n")
 
-os.environ['HF_TOKEN'] = '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'
+os.environ['HF_TOKEN'] = 'hf_xxxxxxxxxxxxxxxxxxx'
 print("HuggingFace token configured!\n")
 
 import numpy as np
@@ -789,11 +789,11 @@ class Config:
     TEST_RATIO = 0.15
     LOG_INTERVAL = 50
     DATASETS = {
-        'flux': 'ash12321/flux-1-dev-generated-10k',
-        'sdxl': 'ash12321/sdxl-generated-10k',
-        'nano': 'ash12321/nano-banana-pro-generated-1k',
-        'imagegbt': 'ash12321/imagegbt-1.5-generated-1k',
-        'seedream': 'ash12321/seedream-4.5-generated-2k',
+        'flux': 'xxxxxx/xxxxxxxxxxxx',
+        'sdxl': 'xxxxxx/xxxxxxxxxxxx',
+        'nano': 'xxxxxx/xxxxxxxxxxxx',
+        'imagegbt': 'xxxxxx/xxxxxxxxxxxx',
+        'seedream': 'xxxxxx/xxxxxxxxxxxx',
         'wikiart': 'huggan/wikiart',
         'ffhq': 'gaunernst/ffhq-1024-wds',
         'portraits': 'prithivMLmods/Realistic-Face-Portrait-1024px',
