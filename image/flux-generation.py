@@ -20,7 +20,6 @@ import subprocess
 import os
 
 def install_dependencies():
-    """Install all required packages"""
     print("Installing Dependencies")
     
     packages = [
@@ -91,7 +90,7 @@ print("Imports complete - generating prompts...")
 
 class Config:
     FLUX_MODEL = "black-forest-labs/FLUX.1-dev"  
-    HF_TOKEN = "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"
+    HF_TOKEN = "hf_xxxxxxxxxxxxxx"
     DATASET_REPO = "ash12321/flux-1-dev-generated-10k"
     NUM_IMAGES = 10000
     SEED = 99
