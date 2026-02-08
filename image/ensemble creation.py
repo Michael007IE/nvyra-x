@@ -37,7 +37,7 @@ from transformers import ViTModel, ViTImageProcessor
 from PIL import Image
 from huggingface_hub import hf_hub_download
 
-os.environ['HF_TOKEN'] = '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'
+os.environ['HF_TOKEN'] = 'hf_xxxxxxxxxxxxxx'
 
 print("Custom Deepfake Detection Platform")
 print("\n Loading deefake detection system...")
