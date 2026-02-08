@@ -39,15 +39,15 @@ sparse_embed_model = "naver/splade-v3"
 reranker_lite = "Qwen/Qwen3-Reranker-0.6B"
 reranker_heavy = "Qwen/Qwen3-Reranker-8B"
 cache_secrets = [modal.Secret.from_dict({
-    "hf_token": "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",
-    "qdrant_url": "http://95.111.232.85:6333",
-    "qdrant_collection": "diamond_v30",
-    "turso_url": "https://ai-metadata-cache-f-b.aws-eu-west-1.turso.io",
-    "turso_api": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjYzNDE4NzEsImlkIjoiYmYwODMzM2MtNTZlMS00ZDJhLWIwYmItMGUzOTMyODI0Y2FlIiwicmlkIjoiMjBmOGYyNjgtODkzYS00NTk5LWI0NWYtMDc3M2MxOGYwNjZiIn0.U-A2yG0WcrG1gikhyNrreLm9cDqlQstgiT9IW9mtgM111xNKjEnoEohOnWY9uNXD2kGpe-tHfb54b_hHCXvEBw",
-    "b2_endpoint": "https://s3.eu-central-003.backblazeb2.com",
-    "b2_access_key": "00356bc3d6937610000000004",
-    "b2_secret_key": "K0036GxH+hhmmADw9yh8aspgXhvu6fo",
-    "b2_bucket": "ai-text-cache",
+    "hf_token": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "qdrant_url": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "qdrant_collection": "xxxxxxxxxxxxxxxxxxxxxxx",
+    "turso_url": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "turso_api": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "b2_endpoint": "xxxxxxxxxxxxxxxxx",
+    "b2_access_key": "xxxxxxxxxxxxxxxxx",
+    "b2_secret_key": "xxxxxxxxxxx",
+    "b2_bucket": "xxxxx",
 })]
 hf_cache_vol = modal.Volume.from_name("huggingface-cache", create_if_missing=True)
 data_vol = modal.Volume.from_name("rag-harvest-storage-prod", create_if_missing=True)
