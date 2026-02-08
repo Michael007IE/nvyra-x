@@ -46,7 +46,6 @@ def upload_to_huggingface(repo_id, repo_type="dataset"):
     print("Upload complete!")
 @app.local_entrypoint()
 def main():
-    """Upload the reasoning data volume to Hugging Face."""
     upload_to_huggingface.remote(repo_id="Feargal/reasoning-data", repo_type="dataset")
 
 # !modal run --detach upload.py
