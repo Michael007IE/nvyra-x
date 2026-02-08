@@ -128,7 +128,6 @@ try:
             return self.classifier(outputs.pooler_output)
     
     class SmallModelDetector(nn.Module):
-        """ViT-Small detector for Nano/SeeDream/ImageGBT"""
         def __init__(self):
             super().__init__()
             self.vit = ViTModel.from_pretrained("WinKawaks/vit-small-patch16-224")
@@ -199,7 +198,7 @@ try:
 except Exception as e:
     print(f"Failed to load ensemble model: {e}")
     print(f"\n Please make sure:")
-    print(f"   1. The model is uploaded to HuggingFace: ash12321/ensemble-ai-detector")
+    print(f"   1. The model is uploaded to HuggingFace: xxxx/xxxxxxx")
     print(f"   2. Your HF_TOKEN is set correctly")
     import traceback
     traceback.print_exc()
